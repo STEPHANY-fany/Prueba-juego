@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: hadoop-battle-arena
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: HOST_PIN
+        value: "1234"
+      - key: SECRET_KEY
+        generateValue: true
