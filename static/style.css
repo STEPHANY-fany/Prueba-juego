@@ -122,3 +122,11 @@ body { background: #17101c url('/static/arena-background.png') center center / c
 @keyframes sprite-hit { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-13px) rotate(-5deg);filter:brightness(2) drop-shadow(0 0 12px #ff5d8f)} 40%,80%{transform:translateX(10px) rotate(4deg)} }
 @keyframes sprite-ko { to { transform:rotate(75deg) translateY(70px); opacity:.45; filter:grayscale(1); } }
 @media(max-width:600px){ .fighter-stage{min-height:145px}.character-sprite{height:155px} }
+
+/* Aviso de espera para quien ya ganó su combate y panel de combates pendientes del anfitrión */
+.wait-banner{margin:-2px 0 18px;padding:13px 16px;text-align:center;border:1px solid var(--green);border-radius:12px;background:#243420;color:#e6ffcf;font-size:14px;line-height:1.5}
+.pending-title{margin-top:18px;font-family:Orbitron,sans-serif;font-size:12px;letter-spacing:1px;color:var(--purple)}
+.pending-matches{display:grid;gap:8px;margin-top:10px}
+.pending-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);font-size:13px}
+.pending-row span{flex:1 1 100%;overflow-wrap:anywhere}
+.pending-row button.small{padding:7px 12px;font-size:12px}

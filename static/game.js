@@ -5,15 +5,24 @@ function setCharacter(imgId, filename) {
   if (filename) $(imgId).src = "/static/characters/" + filename;
 }
 
+// sessionStorage sobrevive a recargas (F5) de la pestaña y no se comparte entre pestañas.
+const store = {
+  get(key) { try { return sessionStorage.getItem(key); } catch (e) { return null; } },
+  set(key, value) { try { sessionStorage.setItem(key, value); } catch (e) { /* sin almacenamiento */ } },
+  del(key) { try { sessionStorage.removeItem(key); } catch (e) { /* sin almacenamiento */ } }
+};
+const PLAYER_KEY = "hba_player_token";
+const HOST_KEY = "hba_host_token";
+
 const socket = io();
 let myId = null;
 let myName = "";
 let isHost = false;
 let currentState = null;
 let answeredThisRound = false;
-let canAttack = false;
-let hasAttacked = false;
+let attackInFlight = false;
 let currentQuestion = null;
+let winnerShown = false;
 
 const joinScreen = $("join-screen");
 const gameScreen = $("game-screen");
@@ -25,66 +34,108 @@ $("join-btn").addEventListener("click", () => {
 });
 $("nickname").addEventListener("keydown", e => { if (e.key === "Enter") $("join-btn").click(); });
 
+// Cada vez que la conexión se (re)establece se recupera el lugar de jugador y el rol de anfitrión.
+socket.on("connect", () => {
+  const playerToken = store.get(PLAYER_KEY);
+  if (playerToken) socket.emit("rejoin", {token: playerToken});
+  const hostToken = store.get(HOST_KEY);
+  if (hostToken) socket.emit("host_resume", {token: hostToken});
+});
+socket.on("disconnect", () => showToast("Conexión perdida. Reintentando…", "error"));
+
 socket.on("joined", data => {
+  const reconnecting = myId === data.id;
   myId = data.id; myName = data.name;
+  store.set(PLAYER_KEY, data.token);
   $("my-name").textContent = myName;
   joinScreen.classList.add("hidden");
   gameScreen.classList.remove("hidden");
-  showToast("¡Entraste a la arena, " + myName + "!", "success");
+  showToast(reconnecting ? "Reconectado a la arena." : "¡Entraste a la arena, " + myName + "!", "success");
+});
+socket.on("rejoin_failed", () => {
+  store.del(PLAYER_KEY);
+  if (myId) {
+    myId = null;
+    gameScreen.classList.add("hidden");
+    joinScreen.classList.remove("hidden");
+    $("join-message").textContent = "Saliste de la sala. Vuelve a entrar con tu apodo.";
+  }
 });
 socket.on("notice", data => {
   showToast(data.message, data.type || "");
-  if (data.type === "error" && joinScreen.classList.contains("hidden") && !myId) {
-    $("join-message").textContent = data.message;
+  if (data.type === "error") {
+    attackInFlight = false;   // si el servidor rechazó un ataque, se puede reintentar
+    if (!myId) $("join-message").textContent = data.message;
+    populateTargets();
   }
 });
 socket.on("host_auth", data => {
-  if (!data.ok) { showToast(data.message, "error"); return; }
+  if (!data.ok) {
+    if (data.silent) store.del(HOST_KEY);
+    else showToast(data.message, "error");
+    return;
+  }
   isHost = true;
+  store.set(HOST_KEY, data.token);
   $("host-panel").classList.remove("hidden");
-  showToast("Modo anfitrión activado.", "success");
+  if (!data.silent) showToast(data.message, "success");
+  if (currentState) renderHostMatches(currentState);
 });
 socket.on("state_update", renderState);
 socket.on("new_question", q => {
   currentQuestion = q;
-  answeredThisRound = false; canAttack = false; hasAttacked = false;
+  answeredThisRound = false; attackInFlight = false;
   $("answer-feedback").textContent = "";
-  $("answer-status").textContent = "¡Responde!";
+  setStatus("¡Responde!", "");
   $("attack-area").classList.add("hidden");
   renderQuestion(q);
 });
 socket.on("answer_result", result => {
   $("answer-feedback").textContent = result.message + " " + result.explanation;
-  $("answer-status").textContent = result.correct ? "¡CORRECTO!" : "INCORRECTO";
-  $("answer-status").style.color = result.correct ? "var(--green)" : "var(--pink)";
-  canAttack = result.correct;
-  if (result.correct) populateTargets();
+  setStatus(result.correct ? "¡CORRECTO!" : "INCORRECTO", result.correct ? "var(--green)" : "var(--pink)");
+  populateTargets();
 });
+// Solo los dos peleadores reciben este evento, así que "yo" siempre es uno de ellos.
 socket.on("attack_animation", data => {
+  const iAttacked = data.attacker_id === myId;
+  const iWasHit = data.target_id === myId;
   showToast(`🥊 ${data.attacker} golpeó a ${data.target} (-${data.damage} vida)`, "success");
-  // Cada participante anima su personaje si fue quien atacó o recibió el golpe.
-  if (data.attacker_id === myId) animateFighter("my-stage", "attacking");
-  if (data.target_id === myId) animateFighter("my-stage", "hit");
-  // El rival mostrado es el primer oponente vivo de la lista.
-  const opponent = currentState && currentState.players.find(p => p.alive && p.id !== myId);
-  if (opponent && opponent.id === data.attacker_id) animateFighter("opponent-stage", "attacking");
-  if (opponent && opponent.id === data.target_id) animateFighter("opponent-stage", "hit");
-  if (data.target_id === myId || (opponent && opponent.id === data.target_id)) {
-    const health = data.target_id === myId ? $("my-health") : $("opponent-health");
-    health.classList.remove("damage-flash"); void health.offsetWidth; health.classList.add("damage-flash");
+  if (iAttacked) {
+    animateFighter("my-stage", "attacking");
+    animateFighter("opponent-stage", "hit");
+    flashHealth("opponent-health");
   }
-  if (data.target_hp <= 0) {
-    if (data.target_id === myId) $("my-stage").classList.add("ko");
-    if (opponent && opponent.id === data.target_id) $("opponent-stage").classList.add("ko");
-    showToast(`💀 ¡KO! ${data.target} quedó fuera de combate.`, "error");
+  if (iWasHit) {
+    animateFighter("opponent-stage", "attacking");
+    animateFighter("my-stage", "hit");
+    flashHealth("my-health");
+  }
+  if (data.ko) {
+    if (iWasHit) $("my-stage").classList.add("ko");
+    if (iAttacked) $("opponent-stage").classList.add("ko");
+    showToast(iAttacked ? "🏆 ¡KO! Ganaste tu combate y avanzas." : `💀 ¡KO! ${data.target} quedó fuera de combate.`, iAttacked ? "success" : "error");
   }
 });
-socket.on("game_over", data => {
-  $("winner-name").textContent = data.winner;
-  $("winner-modal").classList.remove("hidden");
-});
+socket.on("game_over", data => showWinner(data.winner));
 $("close-modal").addEventListener("click", () => $("winner-modal").classList.add("hidden"));
 
+function showWinner(name) {
+  if (winnerShown) return;
+  winnerShown = true;
+  $("winner-name").textContent = name;
+  $("winner-modal").classList.remove("hidden");
+}
+
+function setStatus(text, color) {
+  const status = $("answer-status");
+  status.textContent = text;
+  status.style.color = color;
+}
+
+function flashHealth(id) {
+  const health = $(id);
+  health.classList.remove("damage-flash"); void health.offsetWidth; health.classList.add("damage-flash");
+}
 
 function animateFighter(id, animation) {
   const fighter = $(id);
@@ -123,35 +174,63 @@ function renderQuestion(q) {
 function renderState(state) {
   currentState = state;
   $("alive-count").textContent = `${state.alive_count} vivos · Torneo ${state.tournament_round || 0}`;
-  const finalBanner = $("final-banner");
-  if (state.game_started && state.alive_count === 2) {
-    finalBanner.classList.remove("hidden");
-  } else {
-    finalBanner.classList.add("hidden");
-  }
+  // La final es el único combate que queda en el cuadro, con dos jugadores.
+  const isFinal = state.game_started && !state.winner && state.pairs.length === 1 && state.pairs[0].players.length === 2;
+  $("final-banner").classList.toggle("hidden", !isFinal);
   if (state.question && (!currentQuestion || state.question.number !== currentQuestion.number)) {
     currentQuestion = state.question;
     renderQuestion(state.question);
   }
   const me = state.players.find(p => p.id === myId);
+  const myPair = state.pairs.find(p => p.players.includes(myId));
+  const matchDecided = !!(myPair && myPair.winner);
   if (me) {
     setCharacter("my-character", me.avatar);
     $("my-name").textContent = me.name;
     $("my-hp").textContent = `${me.hp}/100`;
     $("my-health").style.width = `${me.hp}%`;
-    if (!me.alive) {
-      $("answer-status").textContent = "ELIMINADO";
-      $("answer-feedback").textContent = "Te quedaste sin vida. Observa la final.";
+    if (me.answered) {
+      answeredThisRound = true;   // también al volver tras una recarga
+      setStatus(me.correct ? "¡CORRECTO!" : "INCORRECTO", me.correct ? "var(--green)" : "var(--pink)");
+    }
+    if (matchDecided && me.alive) {
+      setStatus(myPair.players.length === 1 ? "DESCANSO" : "¡GANASTE!", "var(--green)");
+    }
+    if (!me.alive || me.answered || matchDecided || !state.question) {
       $("options").querySelectorAll("button").forEach(b => b.disabled = true);
+    }
+    if (!me.alive) {
+      setStatus("ELIMINADO", "var(--pink)");
+      $("answer-feedback").textContent = "Te quedaste sin vida. Observa la final.";
       $("attack-area").classList.add("hidden");
     }
+    if (me.attacked) attackInFlight = false;
   }
-  renderRoster(state.players);
+  renderWaitBanner(state, me, myPair);
+  renderRoster(state.players, me);
   populateTargets();
+  renderHostMatches(state);
   if (isHost) $("start-btn").disabled = state.game_started;
+  if (state.winner) showWinner(state.winner);
 }
 
-function renderRoster(players) {
+// Quien ya ganó su combate (o descansa) espera a que terminen los demás.
+function renderWaitBanner(state, me, myPair) {
+  const banner = $("wait-banner");
+  banner.classList.add("hidden");
+  if (!state.game_started || state.winner || !me || !me.alive || !myPair || !myPair.winner) return;
+  const left = state.pending_matches;
+  const intro = myPair.players.length === 1
+    ? "😴 Descanso esta ronda: pasas directo a la siguiente."
+    : "🏆 ¡Ganaste tu combate!";
+  const outro = left > 0
+    ? `Esperando a que terminen los demás (${left} combate${left === 1 ? "" : "s"} pendiente${left === 1 ? "" : "s"}).`
+    : "Todos los combates terminaron: espera a que el anfitrión forme la siguiente ronda.";
+  banner.textContent = `${intro} ${outro}`;
+  banner.classList.remove("hidden");
+}
+
+function renderRoster(players, me) {
   const roster = $("roster");
   roster.innerHTML = "";
   players.forEach(p => {
@@ -163,10 +242,10 @@ function renderRoster(players) {
     const details = document.createElement("div");
     details.className = "player-details";
     const name = document.createElement("b"); name.textContent = p.name + (p.id === myId ? " (tú)" : "");
-    const hp = document.createElement("small"); hp.textContent = p.alive ? `❤️ ${p.hp}/100 vida` : "Eliminado";
+    const hp = document.createElement("small");
+    hp.textContent = (p.alive ? `❤️ ${p.hp}/100 vida` : "Eliminado") + (p.connected ? "" : " · 📴 sin conexión");
     details.append(name, hp); card.append(avatar, details); roster.append(card);
   });
-  const me = players.find(p => p.id === myId);
   const chosen = me && me.opponent_id ? players.find(p => p.id === me.opponent_id) : null;
   if (chosen) {
     setCharacter("opponent-character", chosen.avatar);
@@ -178,11 +257,15 @@ function renderRoster(players) {
     $("opponent-hp").textContent = "—";
     $("opponent-health").style.width = "0%";
   }
+  // El estado KO sigue a la vida real, así no se arrastra de una ronda a la siguiente.
+  $("my-stage").classList.toggle("ko", !!me && !me.alive);
+  $("opponent-stage").classList.toggle("ko", !!chosen && !chosen.alive);
 }
 
 function populateTargets() {
   if (!currentState || !myId) return;
   const me = currentState.players.find(p => p.id === myId);
+  const myPair = currentState.pairs.find(p => p.players.includes(myId));
   const targets = currentState.players.filter(p => p.alive && p.id === me?.opponent_id);
   const select = $("target-select");
   const old = select.value;
@@ -193,7 +276,9 @@ function populateTargets() {
     select.appendChild(opt);
   });
   if (targets.some(p => p.id === old)) select.value = old;
-  if (canAttack && !hasAttacked && me && me.alive && targets.length) {
+  const canHit = me && me.alive && me.correct && !me.attacked && !attackInFlight &&
+    !(myPair && myPair.winner) && !currentState.winner && targets.length > 0;
+  if (canHit) {
     $("attack-area").classList.remove("hidden");
     $("attack-btn").disabled = false;
   } else {
@@ -202,20 +287,47 @@ function populateTargets() {
 }
 $("attack-btn").addEventListener("click", () => {
   const target = $("target-select").value;
-  if (!target) return;
-  socket.emit("attack", {target});
-  hasAttacked = true;
-  canAttack = false;
+  if (!target || attackInFlight) return;
+  attackInFlight = true;   // se libera al llegar el estado del servidor o un rechazo
   $("attack-btn").disabled = true;
   $("attack-area").classList.add("hidden");
+  socket.emit("attack", {target});
 });
+
+// Combates sin ganador: el anfitrión puede decidirlos si alguien no vuelve.
+function renderHostMatches(state) {
+  const box = $("pending-matches");
+  const title = $("pending-title");
+  box.innerHTML = "";
+  title.textContent = "";
+  if (!isHost || !state.game_started || state.winner) return;
+  const pending = state.pairs.filter(pair => pair.players.length === 2 && !pair.winner);
+  title.textContent = `Combates pendientes: ${pending.length}`;
+  pending.forEach(pair => {
+    const fighters = pair.players.map(id => state.players.find(p => p.id === id)).filter(Boolean);
+    const row = document.createElement("div");
+    row.className = "pending-row";
+    const label = document.createElement("span");
+    label.textContent = fighters.map(p => p.name + (p.connected ? "" : " 📴")).join("  vs  ");
+    row.append(label);
+    fighters.forEach(p => {
+      const btn = document.createElement("button");
+      btn.className = "secondary small";
+      btn.textContent = `Gana ${p.name}`;
+      btn.addEventListener("click", () => {
+        if (confirm(`¿Dar el combate a ${p.name}?`)) socket.emit("force_winner", {winner: p.id});
+      });
+      row.append(btn);
+    });
+    box.append(row);
+  });
+}
 
 $("start-btn").addEventListener("click", () => socket.emit("start_game"));
 $("next-btn").addEventListener("click", () => socket.emit("next_question"));
 $("reset-btn").addEventListener("click", () => {
   if (confirm("¿Seguro que quieres reiniciar la sala? Todos tendrán que volver a entrar.")) socket.emit("reset_game");
 });
-$("host-panel").addEventListener("dblclick", () => {});
 function solicitarAccesoAnfitrion() {
   const pin = prompt("PIN del anfitrión:");
   if (pin !== null) socket.emit("host_login", {pin});
@@ -229,6 +341,7 @@ document.addEventListener("keydown", e => {
 });
 
 socket.on("reset_notice", data => {
+  store.del(PLAYER_KEY);
   showToast(data.message, "error");
   setTimeout(() => location.reload(), 1800);
 });

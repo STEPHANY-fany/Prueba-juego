@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Hadoop Battle Arena</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="{{ url_for('static', filename='socket.io.min.js') }}"></script>
 </head>
 <body>
   <div class="page-bg"></div>
@@ -57,6 +57,7 @@
         </div>
       </section>
       <div id="final-banner" class="final-banner hidden">⚔️ GRAN FINAL · ¡Solo quedan dos luchadores!</div>
+      <div id="wait-banner" class="wait-banner hidden"></div>
 
       <section class="panel question-panel">
         <div class="question-meta"><span class="eyebrow">PREGUNTA DE LA RONDA</span><span id="answer-status" class="answer-status">¡Prepárate!</span></div>
@@ -86,6 +87,8 @@
           <button id="next-btn" class="secondary">Siguiente pregunta →</button>
           <button id="reset-btn" class="secondary">Reiniciar sala</button>
         </div>
+        <div id="pending-title" class="pending-title"></div>
+        <div id="pending-matches" class="pending-matches"></div>
       </section>
     </section>
   </main>
