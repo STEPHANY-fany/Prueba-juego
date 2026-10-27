@@ -37,9 +37,16 @@ HOST_PIN = os.environ.get("HOST_PIN", "1234")
 ROOM = "hadoop-battle"
 MAX_PLAYERS = 80
 DAMAGE = 20
+# Puntos del ranking: cada acierto golpea (+10) y ganar un combate suma +50 (el descanso no suma).
+POINTS_HIT = 10
+POINTS_WIN = 50
+RANKING_TOP = 3
 # Segundos que se espera a que un jugador desconectado vuelva antes de sacarlo
 # del lobby o de darle el combate por perdido.
 GRACE_SECONDS = float(os.environ.get("RECONNECT_GRACE_SECONDS", "45"))
+# Tiempo para responder cada pregunta y duración del resumen del ranking entre preguntas.
+QUESTION_SECONDS = float(os.environ.get("QUESTION_SECONDS", "20"))
+REVIEW_SECONDS = float(os.environ.get("REVIEW_SECONDS", "6"))
 
 # Los handlers de Socket.IO corren en hilos distintos y comparten `state`:
 # un solo candado reentrante serializa cualquier lectura o escritura.
@@ -146,7 +153,14 @@ state = {
     "used_questions": [],
     "winner": None,
     "pairs": [],
-    "tournament_round": 0
+    "tournament_round": 0,
+    # Ciclo de preguntas: lobby -> question (con plazo) -> review (resumen) -> question ... -> over
+    "phase": "lobby",
+    "deadline": 0.0,
+    "review_until": 0.0,
+    "review": None,
+    "question_events": [],
+    "rank_base": {}
 }
 
 
@@ -189,15 +203,46 @@ def drop_player(pid):
         sid_to_pid.pop(p.get("sid"), None)
 
 
+def ranking():
+    """Ids ordenados por puntos, victorias, aciertos y nombre (los eliminados también cuentan)."""
+    return sorted(state["players"], key=lambda pid: (
+        -state["players"][pid]["points"], -state["players"][pid]["wins"],
+        -state["players"][pid]["hits"], state["players"][pid]["name"].lower()))
+
+
+def ranking_view(limit=RANKING_TOP):
+    """Los primeros puestos; `delta` es cuántos lugares subió (+) o bajó (-) desde que empezó la pregunta."""
+    base = state["rank_base"]
+    view = []
+    for rank, pid in enumerate(ranking()[:limit], start=1):
+        p = state["players"][pid]
+        view.append({
+            "rank": rank, "id": pid, "name": p["name"], "points": p["points"], "wins": p["wins"],
+            "alive": p["hp"] > 0, "delta": base[pid] - rank if pid in base else 0
+        })
+    return view
+
+
+def seconds_left(now):
+    if state["phase"] == "question":
+        return round(max(0.0, state["deadline"] - now), 2)
+    if state["phase"] == "review":
+        return round(max(0.0, state["review_until"] - now), 2)
+    return 0.0
+
+
 def public_state():
     with LOCK:
+        now = time.time()
+        ranks = {pid: rank for rank, pid in enumerate(ranking(), start=1)}
         players = []
         for pid, p in state["players"].items():
             players.append({
                 "id": pid, "name": p["name"], "hp": p["hp"], "avatar": p["avatar"],
                 "alive": p["hp"] > 0, "connected": p.get("connected", True),
                 "answered": p.get("answered", False),
-                "correct": p.get("correct", False)
+                "correct": p.get("correct", False),
+                "points": p["points"], "wins": p["wins"], "rank": ranks[pid]
             })
         players.sort(key=lambda x: (-x["alive"], -x["hp"], x["name"].lower()))
         pair_for = {}
@@ -224,7 +269,13 @@ def public_state():
             "round": state["round"],
             "game_started": state["game_started"],
             "winner": state["winner"],
-            "alive_count": sum(1 for p in state["players"].values() if p["hp"] > 0)
+            "alive_count": sum(1 for p in state["players"].values() if p["hp"] > 0),
+            "phase": state["phase"],
+            "seconds_left": seconds_left(now),
+            "question_seconds": QUESTION_SECONDS,
+            "review_seconds": REVIEW_SECONDS,
+            "ranking": ranking_view(),
+            "review": state["review"] if state["phase"] == "review" else None
         }
 
 
@@ -251,12 +302,25 @@ def make_pairs(ids):
 def declare_champion(pid):
     state["winner"] = state["players"][pid]["name"]
     state["question"] = None
-    socketio.emit("game_over", {"winner": state["winner"]}, to=ROOM)
+    state["phase"] = "over"
+    socketio.emit("game_over", {"winner": state["winner"], "ranking": ranking_view()}, to=ROOM)
 
 
-def finish_match(pair, winner_pid):
+EVENT_TEXT = {
+    "ko": "{w} dejó KO a {l}",
+    "abandono": "{w} avanza: {l} se desconectó",
+    "anfitrion": "{w} avanza por decisión del anfitrión",
+}
+
+
+def finish_match(pair, winner_pid, how="ko"):
     pair["winner"] = winner_pid
-    # Si solo queda un combate, es la final: el campeón se anuncia sin esperar al anfitrión.
+    winner = state["players"][winner_pid]
+    winner["points"] += POINTS_WIN
+    winner["wins"] += 1
+    loser = next(state["players"][i] for i in pair["players"] if i != winner_pid)
+    state["question_events"].append(EVENT_TEXT[how].format(w=winner["name"], l=loser["name"]))
+    # Si solo queda un combate, es la final: el campeón se anuncia solo.
     if len(state["pairs"]) == 1 and not state["winner"]:
         declare_champion(winner_pid)
 
@@ -270,7 +334,21 @@ def form_next_round():
             state["players"][pid]["hp"] = 100
 
 
-def next_question_internal():
+def eligible_unanswered():
+    """Quienes aún pueden responder: vivos, conectados, en un combate sin ganador y sin responder."""
+    waiting = []
+    for pair in state["pairs"]:
+        if pair.get("winner") or len(pair["players"]) < 2:
+            continue
+        for pid in pair["players"]:
+            p = state["players"][pid]
+            if p["hp"] > 0 and p.get("connected", True) and not p["answered"]:
+                waiting.append(pid)
+    return waiting
+
+
+def begin_question():
+    """Forma la siguiente ronda si hace falta y lanza una pregunta nueva con su plazo."""
     if state["winner"]:
         return
     # Cuando todos los combates de la ronda tienen ganador, formar la siguiente ronda.
@@ -290,7 +368,55 @@ def next_question_internal():
     state["question"] = {"q": q["q"], "options": q["options"], "number": state["round"]}
     for p in state["players"].values():
         p.update({"answered": False, "correct": False})
-    socketio.emit("new_question", state["question"], to=ROOM)
+    state["phase"] = "question"
+    state["deadline"] = time.time() + QUESTION_SECONDS
+    state["review"] = None
+    state["question_events"] = []
+    # Las flechas del ranking comparan contra las posiciones al empezar esta pregunta.
+    state["rank_base"] = {pid: rank for rank, pid in enumerate(ranking(), start=1)}
+    socketio.emit("new_question", dict(state["question"], seconds=QUESTION_SECONDS), to=ROOM)
+
+
+def end_question():
+    """Cierra la pregunta y abre el resumen con la respuesta correcta y el ranking."""
+    if state["phase"] != "question":
+        return
+    q = QUESTIONS[state["question_index"]]
+    state["phase"] = "review"
+    state["review_until"] = time.time() + REVIEW_SECONDS
+    state["review"] = {
+        "number": state["round"],
+        "correct": q["answer"],
+        "explain": q["explain"],
+        "events": state["question_events"][:6],
+        "round_over": bool(state["pairs"]) and all(pair.get("winner") for pair in state["pairs"]),
+        "tournament_round": state["tournament_round"],
+        "ranking": ranking_view(),
+    }
+    socketio.emit("question_end", state["review"], to=ROOM)
+    broadcast_state()
+
+
+def maybe_close_question(now=None):
+    """Cierra la pregunta al vencer el plazo o cuando ya respondieron todos los que podían."""
+    if state["phase"] != "question":
+        return
+    now = time.time() if now is None else now
+    if now >= state["deadline"] or not eligible_unanswered():
+        end_question()
+
+
+def tick_game():
+    """Reloj del juego: cierra preguntas por tiempo y pasa solo de un resumen a la pregunta siguiente."""
+    with LOCK:
+        if not state["game_started"] or state["winner"]:
+            return
+        now = time.time()
+        if state["phase"] == "question":
+            maybe_close_question(now)
+        elif state["phase"] == "review" and now >= state["review_until"]:
+            begin_question()
+            broadcast_state()
 
 
 def resume_player(pid):
@@ -342,7 +468,8 @@ def join_game(data):
     token = secrets.token_urlsafe(16)
     state["players"][pid] = {
         "name": name, "hp": 100, "avatar": random.choice(CHARACTERS), "connected": True,
-        "answered": False, "correct": False, "byes": 0, "token": token
+        "answered": False, "correct": False, "byes": 0, "points": 0, "hits": 0, "wins": 0,
+        "token": token
     }
     token_to_pid[token] = pid
     attach_sid(pid, sid)
@@ -405,25 +532,13 @@ def start_game(*_):
         return
     state.update({
         "game_started": True, "winner": None, "tournament_round": 1, "round": 0,
-        "question_index": -1, "used_questions": []
+        "question_index": -1, "used_questions": [], "phase": "lobby", "review": None,
+        "question_events": [], "rank_base": {}
     })
     for p in state["players"].values():
-        p.update({"hp": 100, "answered": False, "correct": False, "byes": 0})
+        p.update({"hp": 100, "answered": False, "correct": False, "byes": 0, "points": 0, "hits": 0, "wins": 0})
     state["pairs"] = make_pairs(state["players"].keys())
-    next_question_internal()
-    broadcast_state()
-
-
-@socketio.on("next_question")
-@locked
-def next_question(*_):
-    if not is_host():
-        emit("notice", {"type": "error", "message": "Solo el anfitrión puede avanzar las preguntas."})
-        return
-    if not state["game_started"]:
-        emit("notice", {"type": "error", "message": "Primero inicia la partida."})
-        return
-    next_question_internal()
+    begin_question()    # a partir de aquí el juego avanza solo (ver tick_game)
     broadcast_state()
 
 
@@ -442,7 +557,7 @@ def force_winner(data):
     for other in pair["players"]:
         if other != pid:
             state["players"][other]["hp"] = 0
-    finish_match(pair, pid)
+    finish_match(pair, pid, "anfitrion")
     socketio.emit("notice", {"type": "success", "message": f'El anfitrión dio el combate a {state["players"][pid]["name"]}.'}, to=ROOM)
     broadcast_state()
 
@@ -457,6 +572,9 @@ def submit_answer(data):
         return
     if not state["game_started"] or not state["question"]:
         emit("notice", {"type": "error", "message": "Todavía no hay una pregunta activa."})
+        return
+    if state["phase"] != "question" or time.time() >= state["deadline"]:
+        emit("notice", {"type": "error", "message": "Se acabó el tiempo de esta pregunta."})
         return
     pair = find_pair(pid)
     if not pair or pair.get("winner"):
@@ -480,6 +598,7 @@ def submit_answer(data):
     })
     if p["correct"]:
         hit(pid, rival_id, pair)
+    maybe_close_question()    # si ya respondieron todos (o acabó el último combate), no hay que esperar al reloj
     broadcast_state()
 
 
@@ -487,6 +606,8 @@ def hit(attacker_pid, target_id, pair):
     """Un acierto golpea de inmediato al rival del combate; no hay botón de ataque."""
     attacker = state["players"][attacker_pid]
     target = state["players"][target_id]
+    attacker["points"] += POINTS_HIT
+    attacker["hits"] += 1
     target["hp"] = max(0, target["hp"] - DAMAGE)
     ko = target["hp"] <= 0
     if ko:
@@ -515,7 +636,8 @@ def reset_game(*_):
     state.update({
         "question_index": -1, "question": None, "round": 0,
         "game_started": False, "used_questions": [], "winner": None,
-        "pairs": [], "tournament_round": 0
+        "pairs": [], "tournament_round": 0, "phase": "lobby", "deadline": 0.0,
+        "review_until": 0.0, "review": None, "question_events": [], "rank_base": {}
     })
     socketio.emit("reset_notice", {"message": "La sala se reinició. Vuelvan a entrar con su apodo."}, to=ROOM)
     broadcast_state()
@@ -561,7 +683,7 @@ def reap_disconnected():
                     winner = b if gone_a else a
                 loser = a if winner == b else b
                 state["players"][loser]["hp"] = 0
-                finish_match(pair, winner)
+                finish_match(pair, winner, "abandono")
                 socketio.emit("notice", {
                     "type": "error",
                     "message": f'{state["players"][loser]["name"]} se desconectó: {state["players"][winner]["name"]} avanza por abandono.'
@@ -571,13 +693,18 @@ def reap_disconnected():
             broadcast_state()
 
 
-def reaper_loop():
+def game_loop():
+    """Reloj de fondo: cada 0.25 s hace avanzar el juego y, cada segundo, revisa a los desconectados."""
+    last_reap = 0.0
     while True:
-        socketio.sleep(1)
+        socketio.sleep(0.25)
         try:
-            reap_disconnected()
+            tick_game()
+            if time.time() - last_reap >= 1:
+                last_reap = time.time()
+                reap_disconnected()
         except Exception:
-            app.logger.exception("Error al revisar jugadores desconectados")
+            app.logger.exception("Error en el ciclo del juego")
 
 
 def lan_ip():
@@ -594,5 +721,5 @@ def lan_ip():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     print(f"\n  Hadoop Battle Arena\n  En este equipo : http://127.0.0.1:{port}\n  En la red local: http://{lan_ip()}:{port}\n")
-    socketio.start_background_task(reaper_loop)
+    socketio.start_background_task(game_loop)
     socketio.run(app, host="0.0.0.0", port=port, allow_unsafe_werkzeug=True)

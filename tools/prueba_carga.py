@@ -3,16 +3,23 @@
 
 Simula N jugadores (el primero también es el anfitrión, como en el juego real)
 contra un servidor y comprueba que el torneo siempre termina con un campeón.
-Puede simular recargas de página y jugadores que desaparecen.
+Puede simular recargas de página, jugadores que desaparecen y jugadores
+conectados que no responden (--afk). El juego avanza solo (reloj de cada
+pregunta y resumen entre preguntas): el anfitrión únicamente inicia la partida
+y, si un combate de dos inactivos se traba, lo decide con "Gana ...".
 
 Ejemplos (desde la carpeta del proyecto, con el entorno virtual activo):
     python tools/prueba_carga.py --spawn --players 20
     python tools/prueba_carga.py --spawn --players 20 --reload-mid 4 --vanish 3
     python tools/prueba_carga.py --spawn --players 20 --vanish-pair
+    python tools/prueba_carga.py --spawn --players 20 --afk 4 --question-seconds 2
+    python tools/prueba_carga.py --spawn --players 20 --afk-pair
     python tools/prueba_carga.py --url http://192.168.1.50:5000 --players 20
 
 Con --spawn la prueba arranca su propio servidor (puerto libre, gracia de
-reconexión corta) y además revisa que no escriba errores en su salida.
+reconexión corta y preguntas de pocos segundos) y además revisa que no escriba
+errores en su salida, que cada pregunta cierre a tiempo y que el ranking salga
+ordenado y sin que nadie pierda puntos.
 Requiere: pip install -r requirements-dev.txt
 """
 import argparse
@@ -48,6 +55,9 @@ class Bot:
         self.scheduled_q = None
         self.state_time = 0
         self.reloaded_at = None
+        self.afk = False            # conectado pero sin responder nunca
+        self.max_points = {}
+        self.rank_errors = []
         self.sio.on("joined", self._on_joined)
         self.sio.on("state_update", self._on_state)
         self.sio.on("game_over", self._on_game_over)
@@ -70,10 +80,21 @@ class Bot:
         self.state_time = time.time()
         if st.get("winner"):
             self.winner = st["winner"]
+        self._check_ranking(st)
         self._act(st)
 
+    def _check_ranking(self, st):
+        """El top 3 debe venir ordenado por puntos y nadie puede perder puntos."""
+        points = [entry["points"] for entry in st.get("ranking", [])]
+        if points != sorted(points, reverse=True):
+            self.rank_errors.append(f"ranking desordenado: {points}")
+        for p in st["players"]:
+            if p["points"] < self.max_points.get(p["id"], 0):
+                self.rank_errors.append(f"{p['name']} perdió puntos: {self.max_points[p['id']]} -> {p['points']}")
+            self.max_points[p["id"]] = max(self.max_points.get(p["id"], 0), p["points"])
+
     def _act(self, st):
-        if self.vanished or self.pid is None or st.get("winner"):
+        if self.vanished or self.afk or self.pid is None or st.get("winner"):
             return
         me = next((p for p in st["players"] if p["id"] == self.pid), None)
         if not me or not me["alive"]:
@@ -136,8 +157,9 @@ class Bot:
 
 
 class Server:
-    def __init__(self, app_dir, port, grace):
+    def __init__(self, app_dir, port, grace, question_seconds, review_seconds):
         env = dict(os.environ, PORT=str(port), RECONNECT_GRACE_SECONDS=str(grace),
+                   QUESTION_SECONDS=str(question_seconds), REVIEW_SECONDS=str(review_seconds),
                    PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
         self.port = port
         self.lines = []
@@ -191,11 +213,60 @@ def run_threads(targets):
         t.join()
 
 
+def observe(url, pin):
+    """Cliente pasivo, en su propio proceso: anota cuándo llegan new_question y question_end.
+
+    Los bots comparten un solo proceso y, bajo carga, sus hilos se atrasan unas décimas;
+    medir los plazos desde aquí evita confundir ese retraso con el del servidor."""
+    sio = socketio.Client(reconnection=False)
+    sio.on("new_question", lambda q: print(f"q {q['number']} {time.time():.3f}", flush=True))
+    sio.on("question_end", lambda r: print(f"end {r['number']} {time.time():.3f}", flush=True))
+    sio.connect(url, transports=["websocket"], wait_timeout=15)
+    sio.emit("host_login", {"pin": pin})    # solo para entrar en la sala y recibir los eventos
+    sio.wait()
+    return 0
+
+
+def read_observer(proc, events):
+    for line in proc.stdout:
+        parts = line.split()
+        if len(parts) == 3 and parts[0] in ("q", "end"):
+            events.append((float(parts[2]), parts[0], int(parts[1])))
+
+
+def check_play(events, host, args, errors):
+    """Plazos de cada pregunta, pausa del resumen y ranking (solo con --spawn, que conoce la configuración)."""
+    starts, durations, gaps, last_end = {}, [], [], None
+    for moment, kind, number in events:
+        if kind == "q":
+            if last_end is not None:
+                gaps.append(moment - last_end)
+            starts[number] = moment
+        elif number in starts:
+            durations.append(moment - starts[number])
+            last_end = moment
+    if not durations:
+        errors.append("no se registró ninguna pregunta cerrada")
+        return
+    slow = [round(d, 1) for d in durations if d > args.question_seconds + 1.5]
+    if slow:
+        errors.append(f"preguntas que tardaron más de {args.question_seconds + 1.5:.1f}s en cerrarse: {slow[:6]}")
+    quick = [round(g, 1) for g in gaps if g < args.review_seconds - 0.4]
+    late = [round(g, 1) for g in gaps if g > args.review_seconds + 1.5]
+    if quick or late:
+        errors.append(f"pausa entre preguntas fuera de rango (esperada {args.review_seconds}s): {(quick + late)[:6]}")
+    if (args.afk or args.afk_pair) and max(durations) < args.question_seconds - 0.4:
+        errors.append("con jugadores inactivos ninguna pregunta llegó a cerrarse por tiempo")
+    if host.rank_errors:
+        errors.append("ranking incorrecto: " + "; ".join(sorted(set(host.rank_errors))[:4]))
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--players", type=int, default=20, help="jugadores simulados, el primero es el anfitrión")
     ap.add_argument("--url", help="servidor ya en marcha (por defecto se usa --spawn)")
+    ap.add_argument("--observe", metavar="URL", help=argparse.SUPPRESS)   # uso interno: cliente pasivo de medición
     ap.add_argument("--spawn", action="store_true", help="arranca un servidor propio para la prueba")
     ap.add_argument("--app-dir", default=ROOT, help="carpeta con app.py para --spawn")
     ap.add_argument("--pin", default="1234")
@@ -206,22 +277,33 @@ def main():
     ap.add_argument("--reload-mid", type=int, default=0, help="jugadores que recargan durante el torneo")
     ap.add_argument("--vanish", type=int, default=0, help="jugadores que desaparecen durante el torneo")
     ap.add_argument("--vanish-pair", action="store_true", help="desaparecen los dos de un mismo combate")
+    ap.add_argument("--afk", type=int, default=0, help="jugadores conectados que nunca responden")
+    ap.add_argument("--afk-pair", action="store_true", help="los dos de un mismo combate están conectados pero inactivos")
+    ap.add_argument("--stall-seconds", type=float, default=6, help="espera antes de que el anfitrión decida un combate de dos inactivos")
+    ap.add_argument("--question-seconds", type=float, default=3, help="plazo por pregunta del servidor con --spawn")
+    ap.add_argument("--review-seconds", type=float, default=0.5, help="duración del resumen entre preguntas con --spawn")
     ap.add_argument("--accuracy", type=float, default=0.85)
-    ap.add_argument("--interval", type=float, default=0.7, help="segundos entre preguntas del anfitrión")
     ap.add_argument("--timeout", type=float, default=240)
     ap.add_argument("--seed", type=int, default=7)
     args = ap.parse_args()
+    if args.observe:
+        return observe(args.observe, args.pin)
     rng = random.Random(args.seed)
 
     server = None
+    observer = None
+    obs_events = []
     url = args.url
     if args.spawn or not url:
         port = free_port()
-        server = Server(args.app_dir, port, args.grace)
+        server = Server(args.app_dir, port, args.grace, args.question_seconds, args.review_seconds)
         if not server.wait_ready():
             print("El servidor no arrancó:\n" + "\n".join(server.lines))
             return 2
         url = f"http://127.0.0.1:{port}"
+        observer = subprocess.Popen([sys.executable, os.path.abspath(__file__), "--observe", url, "--pin", args.pin],
+                                    stdout=subprocess.PIPE, text=True)
+        threading.Thread(target=read_observer, args=(observer, obs_events), daemon=True).start()
     t0 = time.time()
 
     def log(msg):
@@ -239,6 +321,7 @@ def main():
         if not host.host_ok.wait(10):
             errors.append("el anfitrión no pudo activar el modo anfitrión")
         log(f"{args.players} jugadores dentro del lobby")
+        by_id = {b.pid: b for b in bots}
 
         expected = args.players
         if args.reload_lobby:
@@ -256,6 +339,12 @@ def main():
         if roster != expected:
             errors.append(f"el lobby tiene {roster} jugadores y se esperaban {expected}")
         log(f"lobby estable con {roster} jugadores")
+
+        if args.afk:
+            who = pick(bots, args.afk, rng)
+            for b in who:
+                b.afk = True
+            log(f"{len(who)} jugadores conectados no responderán: {[b.name for b in who]}")
 
         host.sio.emit("start_game")
         end = time.time() + 15
@@ -277,18 +366,35 @@ def main():
                 b.vanish()
             log(f"{len(who)} jugadores desaparecen: {[b.name for b in who]}")
         if args.vanish_pair:
-            by_id = {b.pid: b for b in bots}
             pair = next((p for p in host.state["pairs"]
                          if len(p["players"]) == 2 and host.pid not in p["players"]), None)
             if pair:
                 for pid in pair["players"]:
                     by_id[pid].vanish()
                 log(f"desaparece el combate completo: {[by_id[p].name for p in pair['players']]}")
+        if args.afk_pair:
+            pair = next((p for p in host.state["pairs"]
+                         if len(p["players"]) == 2 and host.pid not in p["players"]), None)
+            if pair:
+                for pid in pair["players"]:
+                    by_id[pid].afk = True
+                log(f"combate de dos jugadores conectados pero inactivos: {[by_id[p].name for p in pair['players']]}")
 
+        # El juego avanza solo; el anfitrión solo interviene si un combate de dos inactivos se traba.
         deadline = time.time() + args.timeout
+        stalled = {}
         while not host.winner and time.time() < deadline:
-            time.sleep(args.interval)
-            host.sio.emit("next_question")
+            time.sleep(0.5)
+            now = time.time()
+            for p in (host.state or {}).get("pairs", []):
+                if p.get("winner") or len(p["players"]) < 2 or not all(by_id[i].afk for i in p["players"]):
+                    continue
+                key = tuple(p["players"])
+                stalled.setdefault(key, now)
+                if now - stalled[key] > args.stall_seconds:
+                    host.sio.emit("force_winner", {"winner": p["players"][0]})
+                    log(f"el anfitrión decide el combate de dos inactivos: {[by_id[i].name for i in p['players']]}")
+                    stalled[key] = now + 10 ** 6
         if host.winner:
             st = host.state
             log(f"CAMPEÓN: {host.winner} (ronda {st['tournament_round']}, {st['round']} preguntas)")
@@ -300,6 +406,8 @@ def main():
             names = {p["id"]: p["name"] for p in st.get("players", [])}
             pending = [[names.get(i, i) for i in p["players"]] for p in st.get("pairs", []) if not p.get("winner")]
             errors.append(f"el torneo se atascó (sin campeón tras {args.timeout:.0f}s); combates sin ganador: {pending}")
+        if server:
+            check_play(obs_events, host, args, errors)
         time.sleep(1.5)
         lost = [b.name for b in bots if not b.recovered()]
         if lost:
@@ -310,6 +418,8 @@ def main():
                 b.sio.disconnect()
             except Exception:
                 pass
+        if observer:
+            observer.terminate()
         if server:
             time.sleep(0.5)
             bad = server.problems()
