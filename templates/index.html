@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Hadoop Battle Arena</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="{{ url_for('static', filename='socket.io.min.js') }}"></script>
 </head>
 <body>
   <div class="page-bg"></div>
@@ -19,12 +19,12 @@
     <section id="join-screen" class="panel join-panel">
       <div class="eyebrow">ARENA DE CONOCIMIENTO</div>
       <h1>¿Listo para <span>luchar?</span></h1>
-      <p class="muted">Responde preguntas sobre Hadoop, consigue ataques y sobrevive hasta la final.</p>
+      <p class="muted">Responde preguntas sobre Hadoop, golpea a tu rival con cada acierto y sobrevive hasta la final.</p>
       <label for="nickname">Tu apodo</label>
       <input id="nickname" maxlength="18" placeholder="Ej. HDFS Warrior" autocomplete="off">
       <button id="join-btn" class="primary">ENTRAR A LA ARENA</button>
       <div id="join-message" class="message"></div>
-      <div class="howto"><b>Reglas rápidas</b><br>100 puntos de vida · Respuesta correcta = puedes atacar · Cada golpe resta 20 puntos.</div>
+      <div class="howto"><b>Reglas rápidas</b><br>100 puntos de vida · Respuesta correcta = golpe automático · Cada golpe resta 20 puntos.</div>
     </section>
 
     <section id="game-screen" class="hidden">
@@ -53,23 +53,17 @@
           </div>
           <div class="fighter-name" id="opponent-name">EL RIVAL</div>
           <div class="health-track"><div id="opponent-health" class="health-fill enemy" style="width:100%"></div></div>
-          <div class="health-label"><span>RIVAL SELECCIONADO</span><b id="opponent-hp">—</b></div>
+          <div class="health-label"><span>TU RIVAL</span><b id="opponent-hp">—</b></div>
         </div>
       </section>
       <div id="final-banner" class="final-banner hidden">⚔️ GRAN FINAL · ¡Solo quedan dos luchadores!</div>
+      <div id="wait-banner" class="wait-banner hidden"></div>
 
       <section class="panel question-panel">
         <div class="question-meta"><span class="eyebrow">PREGUNTA DE LA RONDA</span><span id="answer-status" class="answer-status">¡Prepárate!</span></div>
         <h2 id="question-text">Esperando la pregunta del anfitrión…</h2>
         <div id="options" class="options"></div>
         <div id="answer-feedback" class="feedback"></div>
-        <div id="attack-area" class="attack-area hidden">
-          <label for="target-select">Elige a quién atacar</label>
-          <div class="attack-row">
-            <select id="target-select"></select>
-            <button id="attack-btn" class="danger">🥊 GOLPEAR</button>
-          </div>
-        </div>
       </section>
 
       <section class="panel roster-panel">
@@ -86,6 +80,8 @@
           <button id="next-btn" class="secondary">Siguiente pregunta →</button>
           <button id="reset-btn" class="secondary">Reiniciar sala</button>
         </div>
+        <div id="pending-title" class="pending-title"></div>
+        <div id="pending-matches" class="pending-matches"></div>
       </section>
     </section>
   </main>
