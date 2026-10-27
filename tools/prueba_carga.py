@@ -46,7 +46,6 @@ class Bot:
         self.host_ok = threading.Event()
         self.joined = threading.Event()
         self.scheduled_q = None
-        self.attacked_q = None
         self.state_time = 0
         self.reloaded_at = None
         self.sio.on("joined", self._on_joined)
@@ -87,11 +86,6 @@ class Bot:
         if not me["answered"] and self.scheduled_q != n:
             self.scheduled_q = n
             threading.Timer(self.rng.uniform(0.03, 0.25), self._answer, args=(q,)).start()
-        if me["correct"] and not me["attacked"] and self.attacked_q != n and me.get("opponent_id"):
-            opp = next((p for p in st["players"] if p["id"] == me["opponent_id"]), None)
-            if opp and opp["alive"]:
-                self.attacked_q = n
-                threading.Timer(self.rng.uniform(0.0, 0.1), self._emit, args=("attack", {"target": opp["id"]})).start()
 
     def _answer(self, q):
         right = ANSWERS[q["q"]]
@@ -205,7 +199,8 @@ def main():
     ap.add_argument("--spawn", action="store_true", help="arranca un servidor propio para la prueba")
     ap.add_argument("--app-dir", default=ROOT, help="carpeta con app.py para --spawn")
     ap.add_argument("--pin", default="1234")
-    ap.add_argument("--grace", type=float, default=3, help="segundos de gracia del servidor con --spawn")
+    # El cliente simulado tarda ~3 s en cerrar la conexion al "recargar": la gracia debe superarlo con margen.
+    ap.add_argument("--grace", type=float, default=8, help="segundos de gracia del servidor con --spawn")
     ap.add_argument("--reload-lobby", type=int, default=0, help="jugadores que recargan antes de empezar")
     ap.add_argument("--leave-lobby", type=int, default=0, help="jugadores que se van antes de empezar")
     ap.add_argument("--reload-mid", type=int, default=0, help="jugadores que recargan durante el torneo")

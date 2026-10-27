@@ -20,7 +20,6 @@ let myName = "";
 let isHost = false;
 let currentState = null;
 let answeredThisRound = false;
-let attackInFlight = false;
 let currentQuestion = null;
 let winnerShown = false;
 
@@ -63,11 +62,7 @@ socket.on("rejoin_failed", () => {
 });
 socket.on("notice", data => {
   showToast(data.message, data.type || "");
-  if (data.type === "error") {
-    attackInFlight = false;   // si el servidor rechazó un ataque, se puede reintentar
-    if (!myId) $("join-message").textContent = data.message;
-    populateTargets();
-  }
+  if (data.type === "error" && !myId) $("join-message").textContent = data.message;
 });
 socket.on("host_auth", data => {
   if (!data.ok) {
@@ -84,16 +79,14 @@ socket.on("host_auth", data => {
 socket.on("state_update", renderState);
 socket.on("new_question", q => {
   currentQuestion = q;
-  answeredThisRound = false; attackInFlight = false;
+  answeredThisRound = false;
   $("answer-feedback").textContent = "";
   setStatus("¡Responde!", "");
-  $("attack-area").classList.add("hidden");
   renderQuestion(q);
 });
 socket.on("answer_result", result => {
   $("answer-feedback").textContent = result.message + " " + result.explanation;
   setStatus(result.correct ? "¡CORRECTO!" : "INCORRECTO", result.correct ? "var(--green)" : "var(--pink)");
-  populateTargets();
 });
 // Solo los dos peleadores reciben este evento, así que "yo" siempre es uno de ellos.
 socket.on("attack_animation", data => {
@@ -202,13 +195,10 @@ function renderState(state) {
     if (!me.alive) {
       setStatus("ELIMINADO", "var(--pink)");
       $("answer-feedback").textContent = "Te quedaste sin vida. Observa la final.";
-      $("attack-area").classList.add("hidden");
     }
-    if (me.attacked) attackInFlight = false;
   }
   renderWaitBanner(state, me, myPair);
   renderRoster(state.players, me);
-  populateTargets();
   renderHostMatches(state);
   if (isHost) $("start-btn").disabled = state.game_started;
   if (state.winner) showWinner(state.winner);
@@ -261,38 +251,6 @@ function renderRoster(players, me) {
   $("my-stage").classList.toggle("ko", !!me && !me.alive);
   $("opponent-stage").classList.toggle("ko", !!chosen && !chosen.alive);
 }
-
-function populateTargets() {
-  if (!currentState || !myId) return;
-  const me = currentState.players.find(p => p.id === myId);
-  const myPair = currentState.pairs.find(p => p.players.includes(myId));
-  const targets = currentState.players.filter(p => p.alive && p.id === me?.opponent_id);
-  const select = $("target-select");
-  const old = select.value;
-  select.innerHTML = "";
-  targets.forEach(p => {
-    const opt = document.createElement("option");
-    opt.value = p.id; opt.textContent = `${p.name} — ${p.hp} vida`;
-    select.appendChild(opt);
-  });
-  if (targets.some(p => p.id === old)) select.value = old;
-  const canHit = me && me.alive && me.correct && !me.attacked && !attackInFlight &&
-    !(myPair && myPair.winner) && !currentState.winner && targets.length > 0;
-  if (canHit) {
-    $("attack-area").classList.remove("hidden");
-    $("attack-btn").disabled = false;
-  } else {
-    $("attack-area").classList.add("hidden");
-  }
-}
-$("attack-btn").addEventListener("click", () => {
-  const target = $("target-select").value;
-  if (!target || attackInFlight) return;
-  attackInFlight = true;   // se libera al llegar el estado del servidor o un rechazo
-  $("attack-btn").disabled = true;
-  $("attack-area").classList.add("hidden");
-  socket.emit("attack", {target});
-});
 
 // Combates sin ganador: el anfitrión puede decidirlos si alguien no vuelve.
 function renderHostMatches(state) {

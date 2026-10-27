@@ -1,11 +1,11 @@
 # Hadoop Battle Arena — torneo multijugador
 
-Juego educativo en Flask + Flask-SocketIO con fondo de arena y personajes incluidos. El servidor asigna el avatar a cada participante y todos los navegadores ven el mismo personaje. Los rivales se sortean por parejas en cada ronda; un jugador solo puede atacar a su rival asignado. El ganador de cada combate avanza y las vidas se reinician al comenzar la siguiente ronda.
+Juego educativo en Flask + Flask-SocketIO con fondo de arena y personajes incluidos. El servidor asigna el avatar a cada participante y todos los navegadores ven el mismo personaje. Los rivales se sortean por parejas en cada ronda; cada acierto golpea solo al rival asignado. El ganador de cada combate avanza y las vidas se reinician al comenzar la siguiente ronda.
 
 ## Cómo se juega
 - Cada jugador entra con un apodo. El **anfitrión también entra como jugador** y después activa el modo anfitrión con el botón **ANFITRIÓN** y el PIN.
 - El anfitrión pulsa **Iniciar partida**: se forman las parejas al azar. Con un número impar de jugadores, uno descansa (*bye*) y pasa directo; el descanso va primero a quien todavía no ha descansado.
-- Todos reciben la misma pregunta. Quien acierta puede golpear a su rival (20 de daño); con 5 golpes hay KO y el ganador avanza. Quien ya ganó **espera a que terminen los demás combates**; la pantalla le indica cuántos faltan.
+- Todos reciben la misma pregunta. Quien acierta golpea a su rival al instante, sin pulsar nada (20 de daño); con 5 golpes hay KO y el ganador avanza. Quien ya ganó **espera a que terminen los demás combates**; la pantalla le indica cuántos faltan.
 - Cuando todos los combates tienen ganador, el siguiente clic en **Siguiente pregunta** forma las nuevas parejas. Con 16 jugadores se juegan 8 combates, luego 4, 2 y la gran final. El campeón se anuncia solo al terminar la final.
 
 ## Si alguien se desconecta
@@ -63,7 +63,7 @@ Con `--url` usa un servidor ya en marcha (ojo: lo llena de jugadores de prueba; 
 
 ## Límites importantes
 - El estado se almacena en memoria; si el servicio se reinicia, se pierde la partida.
-- Una respuesta correcta habilita un golpe de 20 de daño y las parejas son aleatorias en cada ronda.
-- Si los dos rivales aciertan y llegan al KO en la misma pregunta, gana quien envíe primero el golpe al servidor. El desempate por pregunta extra o por tiempo todavía no existe.
+- Una respuesta correcta golpea automáticamente con 20 de daño y las parejas son aleatorias en cada ronda.
+- Si los dos rivales aciertan y llegan al KO en la misma pregunta, gana quien responda primero (según llegue su respuesta al servidor). El desempate por pregunta extra o por tiempo todavía no existe.
 - Los personajes se asignan al azar desde el servidor y pueden repetirse entre jugadores.
 - Si una misma persona abre dos navegadores y entra dos veces con apodos diferentes, el sistema los trata como dos jugadores diferentes.

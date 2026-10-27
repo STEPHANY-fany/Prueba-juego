@@ -196,7 +196,6 @@ def public_state():
             players.append({
                 "id": pid, "name": p["name"], "hp": p["hp"], "avatar": p["avatar"],
                 "alive": p["hp"] > 0, "connected": p.get("connected", True),
-                "attacked": p.get("attacked", False),
                 "answered": p.get("answered", False),
                 "correct": p.get("correct", False)
             })
@@ -290,7 +289,7 @@ def next_question_internal():
     q = QUESTIONS[idx]
     state["question"] = {"q": q["q"], "options": q["options"], "number": state["round"]}
     for p in state["players"].values():
-        p.update({"answered": False, "correct": False, "attacked": False})
+        p.update({"answered": False, "correct": False})
     socketio.emit("new_question", state["question"], to=ROOM)
 
 
@@ -343,7 +342,7 @@ def join_game(data):
     token = secrets.token_urlsafe(16)
     state["players"][pid] = {
         "name": name, "hp": 100, "avatar": random.choice(CHARACTERS), "connected": True,
-        "answered": False, "correct": False, "attacked": False, "byes": 0, "token": token
+        "answered": False, "correct": False, "byes": 0, "token": token
     }
     token_to_pid[token] = pid
     attach_sid(pid, sid)
@@ -409,7 +408,7 @@ def start_game(*_):
         "question_index": -1, "used_questions": []
     })
     for p in state["players"].values():
-        p.update({"hp": 100, "answered": False, "correct": False, "attacked": False, "byes": 0})
+        p.update({"hp": 100, "answered": False, "correct": False, "byes": 0})
     state["pairs"] = make_pairs(state["players"].keys())
     next_question_internal()
     broadcast_state()
@@ -472,45 +471,29 @@ def submit_answer(data):
         return
     p["answered"] = True
     p["correct"] = answer == QUESTIONS[state["question_index"]]["answer"]
+    # Mientras el combate no tiene ganador, el rival es el otro jugador de la pareja.
+    rival_id = next(i for i in pair["players"] if i != pid)
     emit("answer_result", {
         "correct": p["correct"],
-        "message": "¡Correcto! Ya puedes atacar." if p["correct"] else "Respuesta incorrecta. ¡Prepárate para la siguiente ronda!",
+        "message": f'¡Correcto! Golpeaste a {state["players"][rival_id]["name"]}.' if p["correct"] else "Respuesta incorrecta. ¡Prepárate para la siguiente ronda!",
         "explanation": QUESTIONS[state["question_index"]]["explain"]
     })
+    if p["correct"]:
+        hit(pid, rival_id, pair)
     broadcast_state()
 
 
-@socketio.on("attack")
-@locked
-def attack(data):
-    pid = current_pid()
-    attacker = state["players"].get(pid)
-    target_id = str(as_dict(data).get("target", ""))
-    target = state["players"].get(target_id)
-    pair = find_pair(pid)
-    if not attacker or not target:
-        emit("notice", {"type": "error", "message": "No se encontró al jugador seleccionado."})
-        return
-    if not state["game_started"] or state["winner"] or not attacker["correct"]:
-        emit("notice", {"type": "error", "message": "Necesitas responder correctamente para atacar."})
-        return
-    if attacker["attacked"]:
-        emit("notice", {"type": "error", "message": "Ya atacaste en esta ronda."})
-        return
-    if attacker["hp"] <= 0 or target["hp"] <= 0 or pid == target_id:
-        emit("notice", {"type": "error", "message": "Elige a un rival que siga en la partida."})
-        return
-    if not pair or pair.get("winner") or target_id not in pair["players"]:
-        emit("notice", {"type": "error", "message": "Solo puedes atacar al rival asignado en tu combate."})
-        return
-    attacker["attacked"] = True
+def hit(attacker_pid, target_id, pair):
+    """Un acierto golpea de inmediato al rival del combate; no hay botón de ataque."""
+    attacker = state["players"][attacker_pid]
+    target = state["players"][target_id]
     target["hp"] = max(0, target["hp"] - DAMAGE)
     ko = target["hp"] <= 0
     if ko:
-        finish_match(pair, pid)
+        finish_match(pair, attacker_pid)
     payload = {
         "attacker": attacker["name"], "target": target["name"],
-        "damage": DAMAGE, "attacker_id": pid, "target_id": target_id,
+        "damage": DAMAGE, "attacker_id": attacker_pid, "target_id": target_id,
         "target_hp": target["hp"], "ko": ko
     }
     # Solo los dos peleadores reciben la animación; el resto ve el resultado en el estado.
@@ -518,7 +501,6 @@ def attack(data):
         sid = state["players"][fighter].get("sid")
         if sid:
             socketio.emit("attack_animation", payload, to=sid)
-    broadcast_state()
 
 
 @socketio.on("reset_game")
