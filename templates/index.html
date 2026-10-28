@@ -27,10 +27,18 @@
       <div class="howto"><b>Reglas rápidas</b><br>100 puntos de vida · Respuesta correcta = golpe automático · Cada golpe resta 20 puntos.</div>
     </section>
 
-    <section id="game-screen" class="hidden">
+    <section id="game-screen" class="game-layout hidden">
+      <aside id="ranking-panel" class="panel ranking-panel" aria-label="Ranking">
+        <div class="ranking-heading"><h2>🏆 Ranking</h2><span id="ranking-note" class="count">Top 3</span></div>
+        <ol id="ranking-list" class="ranking-list"></ol>
+        <div id="my-rank" class="my-rank hidden"></div>
+        <p class="ranking-help">+10 puntos por acierto · +50 por ganar un combate</p>
+      </aside>
+
+      <div class="game-main">
       <div class="arena-heading">
         <div><div class="eyebrow">COMBATE DE CLASE</div><h1>La arena <span>Hadoop</span></h1></div>
-        <div class="round-pill">RONDA <b id="round-number">0</b></div>
+        <div class="round-pill">PREGUNTA <b id="round-number">0</b></div>
       </div>
 
       <section class="battle panel">
@@ -61,6 +69,10 @@
 
       <section class="panel question-panel">
         <div class="question-meta"><span class="eyebrow">PREGUNTA DE LA RONDA</span><span id="answer-status" class="answer-status">¡Prepárate!</span></div>
+        <div id="timer" class="timer hidden" aria-label="Tiempo restante">
+          <div class="timer-track"><div id="timer-fill" class="timer-fill"></div></div>
+          <b id="timer-seconds" class="timer-seconds">20</b>
+        </div>
         <h2 id="question-text">Esperando la pregunta del anfitrión…</h2>
         <div id="options" class="options"></div>
         <div id="answer-feedback" class="feedback"></div>
@@ -77,22 +89,35 @@
         <p class="muted">Solo tú debes activar el modo anfitrión. PIN inicial: 1234 (cámbialo antes de publicar).</p>
         <div class="host-buttons">
           <button id="start-btn" class="primary">▶ Iniciar partida</button>
-          <button id="next-btn" class="secondary">Siguiente pregunta →</button>
           <button id="reset-btn" class="secondary">Reiniciar sala</button>
         </div>
         <div id="pending-title" class="pending-title"></div>
         <div id="pending-matches" class="pending-matches"></div>
       </section>
+      </div>
     </section>
   </main>
 
   <div id="toast" class="toast"></div>
+  <div id="review-card" class="review-card hidden" role="status" aria-live="polite">
+    <div class="review-head"><span class="eyebrow">RESUMEN DE LA PREGUNTA</span><span id="review-countdown" class="count"></span></div>
+    <div id="review-answer" class="review-answer"></div>
+    <div id="review-round" class="review-round hidden"></div>
+    <ol id="review-ranking" class="ranking-list"></ol>
+    <div id="review-me" class="my-rank hidden"></div>
+    <ul id="review-events" class="review-events"></ul>
+  </div>
   <div id="winner-modal" class="modal hidden">
     <div class="modal-card">
       <div class="trophy">🏆</div>
       <div class="eyebrow">CAMPEÓN DE LA ARENA</div>
       <h1 id="winner-name">¡Ganador!</h1>
-      <p>¡Sobreviviste a la batalla de Hadoop!</p>
+      <p>Ganó la batalla final de la arena.</p>
+      <p id="winner-runner" class="runner-up hidden">🥈 Subcampeón: <b id="winner-runner-name"></b></p>
+      <div class="extra-box">
+        <div class="eyebrow podium-title">EXTRA · RANKING POR PUNTOS</div>
+        <ol id="winner-podium" class="ranking-list podium"></ol>
+      </div>
       <button id="close-modal" class="primary">Volver a la arena</button>
     </div>
   </div>

@@ -5,14 +5,23 @@ Juego educativo en Flask + Flask-SocketIO con fondo de arena y personajes inclui
 ## Cómo se juega
 - Cada jugador entra con un apodo. El **anfitrión también entra como jugador** y después activa el modo anfitrión con el botón **ANFITRIÓN** y el PIN.
 - El anfitrión pulsa **Iniciar partida**: se forman las parejas al azar. Con un número impar de jugadores, uno descansa (*bye*) y pasa directo; el descanso va primero a quien todavía no ha descansado.
-- Todos reciben la misma pregunta. Quien acierta golpea a su rival al instante, sin pulsar nada (20 de daño); con 5 golpes hay KO y el ganador avanza. Quien ya ganó **espera a que terminen los demás combates**; la pantalla le indica cuántos faltan.
-- Cuando todos los combates tienen ganador, el siguiente clic en **Siguiente pregunta** forma las nuevas parejas. Con 16 jugadores se juegan 8 combates, luego 4, 2 y la gran final. El campeón se anuncia solo al terminar la final.
+- Todos reciben la misma pregunta y tienen **20 segundos** para responder (una barra y una cuenta atrás lo muestran). Quien acierta golpea a su rival al instante, sin pulsar nada (20 de daño); con 5 golpes hay KO y el ganador avanza. Quien no responde a tiempo no golpea. Las opciones de cada pregunta se mezclan y la respuesta correcta rota entre A, B, C y D, así que no hay una letra que convenga elegir. Quien ya ganó **espera a que terminen los demás combates**; la pantalla le indica cuántos faltan.
+- **El juego avanza solo, no hay botón de "siguiente".** La pregunta se cierra al vencer los 20 s, o antes si ya respondieron todos los que pueden responder. Entonces se muestra durante 6 segundos un **resumen**: la respuesta correcta, el ranking con las flechas ▲▼ de lo que cambió y los KO de esa pregunta. Después llega la pregunta siguiente.
+- Cuando todos los combates tienen ganador, la siguiente pregunta forma sola las nuevas parejas. Con 16 jugadores se juegan 8 combates, luego 4, 2 y la gran final. El campeón (quien gana la final) se anuncia solo al terminar, junto con el subcampeón y, como extra, el ranking por puntos.
+
+## Ranking
+El panel de la **izquierda** muestra a los 3 primeros con 🏆 🥈 🥉, si siguen **vivos** o están **eliminados** y sus puntos; si no estás entre ellos, debajo ves tu posición. Los puntos se acumulan durante todo el torneo:
+- **+10** por cada acierto (cada golpe).
+- **+50** por ganar un combate (por KO, abandono del rival o decisión del anfitrión). El descanso no suma.
+- Desempate: más victorias, luego más aciertos, luego el nombre. Un jugador eliminado puede seguir entre los 3 primeros.
+- **Los puntos no deciden quién gana.** El campeón es siempre quien gana la batalla final, y el subcampeón quien la pierde. El ranking por puntos es un extra: alguien eliminado antes puede haber acumulado más puntos que el campeón, y por eso al final se muestra aparte, con medallas 🥇🥈🥉 y una 👑 junto al campeón si aparece en él.
 
 ## Si alguien se desconecta
 - **Recargar la página (F5) o perder el Wi-Fi no saca al jugador:** al volver recupera su lugar, su vida y su combate. Si cerró la pestaña, basta con entrar de nuevo con **el mismo apodo**.
 - Si no vuelve en 45 segundos (configurable con `RECONNECT_GRACE_SECONDS`): en el lobby se le saca de la lista; en pleno torneo su rival gana el combate por abandono.
 - Si se caen **los dos** de un combate, avanza el que tenga más vida (o uno al azar).
 - Si algún combate se trabó por otra causa, el panel del anfitrión lista los **Combates pendientes** con un botón **Gana …** por jugador para decidirlo a mano. Los jugadores sin conexión aparecen marcados con 📴.
+- Dos jugadores **conectados pero inactivos** en el mismo combate no se resuelven solos: las preguntas siguen pasando por tiempo, pero ese combate no termina hasta que el anfitrión pulse **Gana …**.
 
 ## Torneo en red local (LAN)
 1. En el equipo que será el servidor instala Python 3.10+ desde https://www.python.org/downloads/ (con “Add Python to PATH”).
@@ -48,15 +57,19 @@ Copia `.env.example` como `.env` para cambiar el PIN, el puerto o el plazo de re
 | `HOST_PIN` | `1234` | PIN del anfitrión |
 | `PORT` | `5000` | Puerto del servidor |
 | `RECONNECT_GRACE_SECONDS` | `45` | Espera antes de dar por perdido a quien se desconectó |
+| `QUESTION_SECONDS` | `20` | Tiempo para responder cada pregunta |
+| `REVIEW_SECONDS` | `6` | Duración del resumen del ranking entre preguntas |
 | `SECRET_KEY` | `cambia-esta-clave` | Clave de Flask (solo importa si publicas en internet) |
 
 ## Probar antes del torneo (opcional)
-`tools/prueba_carga.py` simula jugadores reales (incluidas recargas de página y jugadores que desaparecen) y comprueba que el torneo siempre termina con un campeón:
+`tools/prueba_carga.py` simula jugadores reales (incluidas recargas de página, jugadores que desaparecen y jugadores conectados que no responden) y comprueba que el torneo siempre termina con un campeón, que cada pregunta cierra a tiempo y que el ranking sale ordenado. Con `--spawn` usa preguntas de pocos segundos para no tardar:
 ```bat
 pip install -r requirements-dev.txt
 python tools\prueba_carga.py --spawn --players 20
 python tools\prueba_carga.py --spawn --players 20 --reload-mid 4 --vanish 3
 python tools\prueba_carga.py --spawn --players 20 --vanish-pair
+python tools\prueba_carga.py --spawn --players 20 --afk 4 --question-seconds 2
+python tools\prueba_carga.py --spawn --players 20 --afk-pair
 python tools\prueba_carga.py --url http://192.168.1.50:5000 --players 20
 ```
 Con `--url` usa un servidor ya en marcha (ojo: lo llena de jugadores de prueba; reinicia la sala después).
