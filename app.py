@@ -414,7 +414,7 @@ QUESTIONS = [
         "explain": "En el ejemplo, HDFS almacena los registros distribuidos en bloques."
     },
     {
-        "q": "En el mismo caso ilustrativo, ¿qué función cumple YARN?",
+        "q": "Al procesar registros por categorías con Hadoop, ¿qué función cumple YARN?",
         "options": [
             "Almacena los bloques de registros",
             "Asigna recursos a la aplicación de procesamiento",
