@@ -396,11 +396,27 @@ def main():
                     log(f"el anfitrión decide el combate de dos inactivos: {[by_id[i].name for i in p['players']]}")
                     stalled[key] = now + 10 ** 6
         if host.winner:
+            # game_over llega un instante antes que el estado final: se espera a que lo incluya.
+            for _ in range(30):
+                if (host.state or {}).get("winner"):
+                    break
+                time.sleep(0.1)
             st = host.state
             log(f"CAMPEÓN: {host.winner} (ronda {st['tournament_round']}, {st['round']} preguntas)")
             gone = {b.name for b in bots if b.vanished}
             if host.winner in gone:
                 errors.append(f"el campeón {host.winner} era un jugador que había desaparecido")
+            # El campeón es quien ganó la batalla final (no el primero en puntos) y el subcampeón, quien la perdió.
+            names = {p["id"]: p["name"] for p in st["players"]}
+            final = st["pairs"][0] if len(st["pairs"]) == 1 else None
+            if not final or names.get(final["winner"]) != host.winner or st.get("champion_id") != final["winner"]:
+                errors.append(f"el campeón no es quien ganó la batalla final (campeón={host.winner}, "
+                              f"ganador de la final={names.get(final['winner']) if final else None}, "
+                              f"combates en el cuadro={len(st['pairs'])}, champion_id={st.get('champion_id')})")
+            else:
+                loser = [names[i] for i in final["players"] if i != final["winner"]]
+                if loser and st.get("runner_up") != loser[0]:
+                    errors.append(f"el subcampeón es {st.get('runner_up')} y quien perdió la final es {loser[0]}")
         else:
             st = host.state or {}
             names = {p["id"]: p["name"] for p in st.get("players", [])}

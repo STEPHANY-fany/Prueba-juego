@@ -472,7 +472,10 @@ state = {
     "review_until": 0.0,
     "review": None,
     "question_events": [],
-    "rank_base": {}
+    "rank_base": {},
+    # El campeón es quien gana la batalla final (no el primero en puntos); el subcampeón, quien la pierde.
+    "champion_id": None,
+    "runner_up": None
 }
 
 
@@ -581,6 +584,8 @@ def public_state():
             "round": state["round"],
             "game_started": state["game_started"],
             "winner": state["winner"],
+            "champion_id": state["champion_id"],
+            "runner_up": state["runner_up"],
             "alive_count": sum(1 for p in state["players"].values() if p["hp"] > 0),
             "phase": state["phase"],
             "seconds_left": seconds_left(now),
@@ -612,10 +617,18 @@ def make_pairs(ids):
 
 
 def declare_champion(pid):
+    """El campeón es quien gana la batalla final; el ranking de puntos es un extra."""
+    final = next((pair for pair in state["pairs"] if pid in pair["players"]), None)
+    rivals = [i for i in (final["players"] if final else []) if i != pid]
     state["winner"] = state["players"][pid]["name"]
+    state["champion_id"] = pid
+    state["runner_up"] = state["players"][rivals[0]]["name"] if rivals else None
     state["question"] = None
     state["phase"] = "over"
-    socketio.emit("game_over", {"winner": state["winner"], "ranking": ranking_view()}, to=ROOM)
+    socketio.emit("game_over", {
+        "winner": state["winner"], "champion_id": pid, "runner_up": state["runner_up"],
+        "ranking": ranking_view()
+    }, to=ROOM)
 
 
 EVENT_TEXT = {
@@ -845,7 +858,7 @@ def start_game(*_):
     state.update({
         "game_started": True, "winner": None, "tournament_round": 1, "round": 0,
         "question_index": -1, "used_questions": [], "phase": "lobby", "review": None,
-        "question_events": [], "rank_base": {}
+        "question_events": [], "rank_base": {}, "champion_id": None, "runner_up": None
     })
     for p in state["players"].values():
         p.update({"hp": 100, "answered": False, "correct": False, "byes": 0, "points": 0, "hits": 0, "wins": 0})
@@ -949,7 +962,8 @@ def reset_game(*_):
         "question_index": -1, "question": None, "round": 0,
         "game_started": False, "used_questions": [], "winner": None,
         "pairs": [], "tournament_round": 0, "phase": "lobby", "deadline": 0.0,
-        "review_until": 0.0, "review": None, "question_events": [], "rank_base": {}
+        "review_until": 0.0, "review": None, "question_events": [], "rank_base": {},
+        "champion_id": None, "runner_up": None
     })
     socketio.emit("reset_notice", {"message": "La sala se reinició. Vuelvan a entrar con su apodo."}, to=ROOM)
     broadcast_state()

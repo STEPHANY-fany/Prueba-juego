@@ -28,7 +28,8 @@ let timerEndsAt = 0;          // momento (performance.now) en que vence la pregu
 let timerTotal = 20;
 let reviewEndsAt = 0;         // momento en que empieza la pregunta siguiente
 let reviewShownFor = null;    // número de la pregunta cuyo resumen ya se mostró
-const TROPHIES = ["🏆", "🥈", "🥉"];
+const TROPHIES = ["🏆", "🥈", "🥉"];   // ranking en vivo (puntos)
+const MEDALS = ["🥇", "🥈", "🥉"];     // ranking final: el 🏆 y la 👑 son solo del campeón
 const PLACES = ["first", "second", "third"];
 
 const joinScreen = $("join-screen");
@@ -131,16 +132,19 @@ socket.on("attack_animation", data => {
     showToast(iAttacked ? "🏆 ¡KO! Ganaste tu combate y avanzas." : `💀 ¡KO! ${data.target} quedó fuera de combate.`, iAttacked ? "success" : "error");
   }
 });
-socket.on("game_over", data => showWinner(data.winner, data.ranking));
+socket.on("game_over", data => showWinner(data));
 $("close-modal").addEventListener("click", () => $("winner-modal").classList.add("hidden"));
 
-function showWinner(name, ranking) {
+// El campeón es quien ganó la batalla final; el ranking por puntos es un extra con medallas.
+function showWinner(info) {
   if (winnerShown) return;
   winnerShown = true;
-  $("winner-name").textContent = name;
+  $("winner-name").textContent = info.winner;
+  $("winner-runner-name").textContent = info.runner_up || "";
+  $("winner-runner").classList.toggle("hidden", !info.runner_up);
   const podium = $("winner-podium");
   podium.innerHTML = "";
-  (ranking || []).forEach(entry => podium.append(rankRow(entry, entry.id === myId)));
+  (info.ranking || []).forEach(entry => podium.append(rankRow(entry, entry.id === myId, true, info.champion_id)));
   $("winner-modal").classList.remove("hidden");
 }
 
@@ -241,7 +245,7 @@ function renderState(state) {
   renderRoster(state.players, me);
   renderHostMatches(state);
   if (isHost) $("start-btn").disabled = state.game_started;
-  if (state.winner) showWinner(state.winner, state.ranking);
+  if (state.winner) showWinner(state);
 }
 
 // Quien ya ganó su combate (o descansa) espera a que terminen los demás.
@@ -349,16 +353,16 @@ function tickClock() {
 setInterval(tickClock, 250);
 
 // ----- Ranking: un puesto con trofeo, estado (vivo/eliminado), puntos y cambio de posición -----
-function rankRow(entry, isMe) {
+function rankRow(entry, isMe, medals = false, championId = null) {
   const li = document.createElement("li");
   li.className = "rank-row " + (PLACES[entry.rank - 1] || "") + (entry.alive ? "" : " dead") + (isMe ? " me" : "");
   const trophy = document.createElement("span");
   trophy.className = "rank-trophy";
-  trophy.textContent = TROPHIES[entry.rank - 1] || entry.rank;
+  trophy.textContent = (medals ? MEDALS : TROPHIES)[entry.rank - 1] || entry.rank;
   const info = document.createElement("span");
   const name = document.createElement("b");
   name.className = "rank-name";
-  name.textContent = entry.name + (isMe ? " (tú)" : "");
+  name.textContent = entry.name + (isMe ? " (tú)" : "") + (entry.id === championId ? " 👑" : "");
   const meta = document.createElement("small");
   meta.className = "rank-meta";
   const state = document.createElement("span");

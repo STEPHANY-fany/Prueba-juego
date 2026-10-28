@@ -7,14 +7,14 @@ Juego educativo en Flask + Flask-SocketIO con fondo de arena y personajes inclui
 - El anfitrión pulsa **Iniciar partida**: se forman las parejas al azar. Con un número impar de jugadores, uno descansa (*bye*) y pasa directo; el descanso va primero a quien todavía no ha descansado.
 - Todos reciben la misma pregunta y tienen **20 segundos** para responder (una barra y una cuenta atrás lo muestran). Quien acierta golpea a su rival al instante, sin pulsar nada (20 de daño); con 5 golpes hay KO y el ganador avanza. Quien no responde a tiempo no golpea. Quien ya ganó **espera a que terminen los demás combates**; la pantalla le indica cuántos faltan.
 - **El juego avanza solo, no hay botón de "siguiente".** La pregunta se cierra al vencer los 20 s, o antes si ya respondieron todos los que pueden responder. Entonces se muestra durante 6 segundos un **resumen**: la respuesta correcta, el ranking con las flechas ▲▼ de lo que cambió y los KO de esa pregunta. Después llega la pregunta siguiente.
-- Cuando todos los combates tienen ganador, la siguiente pregunta forma sola las nuevas parejas. Con 16 jugadores se juegan 8 combates, luego 4, 2 y la gran final. El campeón se anuncia solo al terminar la final, con el podio de los 3 primeros.
+- Cuando todos los combates tienen ganador, la siguiente pregunta forma sola las nuevas parejas. Con 16 jugadores se juegan 8 combates, luego 4, 2 y la gran final. El campeón (quien gana la final) se anuncia solo al terminar, junto con el subcampeón y, como extra, el ranking por puntos.
 
 ## Ranking
 El panel de la **izquierda** muestra a los 3 primeros con 🏆 🥈 🥉, si siguen **vivos** o están **eliminados** y sus puntos; si no estás entre ellos, debajo ves tu posición. Los puntos se acumulan durante todo el torneo:
 - **+10** por cada acierto (cada golpe).
 - **+50** por ganar un combate (por KO, abandono del rival o decisión del anfitrión). El descanso no suma.
 - Desempate: más victorias, luego más aciertos, luego el nombre. Un jugador eliminado puede seguir entre los 3 primeros.
-- **El campeón es quien gana la final, y no tiene por qué ser el primero del ranking**: alguien eliminado antes puede haber acumulado más puntos. Por eso el podio final se titula "Ranking final por puntos" y se muestra debajo del nombre del campeón.
+- **Los puntos no deciden quién gana.** El campeón es siempre quien gana la batalla final, y el subcampeón quien la pierde. El ranking por puntos es un extra: alguien eliminado antes puede haber acumulado más puntos que el campeón, y por eso al final se muestra aparte, con medallas 🥇🥈🥉 y una 👑 junto al campeón si aparece en él.
 
 ## Si alguien se desconecta
 - **Recargar la página (F5) o perder el Wi-Fi no saca al jugador:** al volver recupera su lugar, su vida y su combate. Si cerró la pestaña, basta con entrar de nuevo con **el mismo apodo**.
