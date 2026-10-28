@@ -61,79 +61,391 @@ def locked(fn):
     return wrapper
 
 QUESTIONS = [
-    {"q": "¿Cuál es la función principal de Hadoop?", "options": [
-        "Editar imágenes", "Almacenar y procesar grandes volúmenes de datos de forma distribuida",
-        "Crear páginas web", "Diseñar bases de datos únicamente"
-    ], "answer": 1, "explain": "Hadoop permite distribuir almacenamiento y procesamiento entre varias computadoras."},
-    {"q": "¿Qué componente almacena archivos en bloques distribuidos?", "options": [
-        "YARN", "Hadoop Common", "HDFS", "MapReduce"
-    ], "answer": 2, "explain": "HDFS es el sistema de archivos distribuido de Hadoop."},
-    {"q": "¿Qué administra los metadatos de HDFS?", "options": [
-        "NameNode", "DataNode", "Reducer", "NodeManager"
-    ], "answer": 0, "explain": "El NameNode mantiene metadatos como nombres de archivos y ubicación de bloques."},
-    {"q": "¿Qué almacena los bloques reales de los archivos en HDFS?", "options": [
-        "ResourceManager", "DataNode", "NameNode", "Hive"
-    ], "answer": 1, "explain": "Los DataNodes almacenan los bloques y atienden operaciones de lectura y escritura."},
-    {"q": "¿Para qué sirve YARN?", "options": [
-        "Para dibujar gráficos", "Para comprimir todas las imágenes",
-        "Para administrar recursos y coordinar aplicaciones", "Para sustituir HDFS"
-    ], "answer": 2, "explain": "YARN gestiona recursos del clúster, como memoria y capacidad de procesamiento."},
-    {"q": "¿Qué componente de YARN administra recursos del clúster?", "options": [
-        "ResourceManager", "NameNode", "DataNode", "Mapper"
-    ], "answer": 0, "explain": "El ResourceManager administra los recursos disponibles del clúster."},
-    {"q": "¿Qué hace un NodeManager?", "options": [
-        "Administra cada nodo trabajador", "Guarda todos los metadatos de HDFS",
-        "Es una distribución comercial", "Agrupa resultados de MapReduce"
-    ], "answer": 0, "explain": "El NodeManager gestiona recursos y tareas en un nodo."},
-    {"q": "¿Cuáles son las dos fases principales del modelo MapReduce?", "options": [
-        "Read y Write", "Map y Reduce", "Start y Stop", "Store y Search"
-    ], "answer": 1, "explain": "Map genera resultados intermedios y Reduce los combina."},
-    {"q": "En MapReduce, ¿qué ocurre durante Shuffle y Sort?", "options": [
-        "Se apaga el clúster", "Se eliminan los datos originales",
-        "Se agrupan los valores por clave", "Se crean usuarios"
-    ], "answer": 2, "explain": "Shuffle y Sort transfieren y agrupan resultados intermedios por clave."},
-    {"q": "¿Qué incluye Hadoop Common?", "options": [
-        "Bibliotecas y utilidades compartidas", "Solo una interfaz gráfica",
-        "Únicamente datos de ventas", "Un sistema operativo"
-    ], "answer": 0, "explain": "Hadoop Common contiene utilidades y bibliotecas comunes a los módulos de Hadoop."},
-    {"q": "¿Qué herramienta del ecosistema permite consultar datos con un lenguaje similar a SQL?", "options": [
-        "HBase", "Hive", "NameNode", "Ambari"
-    ], "answer": 1, "explain": "Hive permite realizar consultas sobre grandes conjuntos de datos mediante HiveQL."},
-    {"q": "¿Qué tipo de base de datos es HBase?", "options": [
-        "Relacional tradicional", "NoSQL distribuida orientada a columnas", "Un lenguaje de programación", "Un navegador web"
-    ], "answer": 1, "explain": "HBase es una base de datos NoSQL distribuida basada en familias de columnas."},
-    {"q": "¿Qué describe mejor la computación distribuida?", "options": [
-        "Una sola computadora hace todo", "Varias computadoras colaboran en una tarea",
-        "Los datos no se guardan", "Solo se trabaja sin internet"
-    ], "answer": 1, "explain": "La computación distribuida reparte almacenamiento o procesamiento entre varias máquinas."},
-    {"q": "¿Para qué sirve la replicación de bloques en HDFS?", "options": [
-        "Para decorar la interfaz", "Para aumentar la resolución de imágenes",
-        "Para reducir el riesgo de pérdida de datos ante fallos", "Para borrar archivos duplicados siempre"
-    ], "answer": 2, "explain": "Las réplicas ayudan a mantener disponibilidad si falla un nodo."},
-    {"q": "¿Qué era Hortonworks Data Platform (HDP)?", "options": [
-        "Una distribución del ecosistema Hadoop", "Un componente físico de una computadora",
-        "Un algoritmo de cifrado", "Un tipo de archivo de imagen"
-    ], "answer": 0, "explain": "Hortonworks ofrecía una plataforma integrada basada en proyectos de código abierto del ecosistema Hadoop."},
-    {"q": "¿Qué fue MapR?", "options": [
-        "Una distribución/plataforma empresarial compatible con el ecosistema Hadoop",
-        "Una fase de MapReduce", "El nombre del NameNode", "Un lenguaje SQL"
-    ], "answer": 0, "explain": "MapR fue una plataforma comercial con tecnologías propias para datos distribuidos."},
-    {"q": "¿Cuál afirmación sobre Hadoop es correcta?", "options": [
-        "Predice automáticamente sin modelos", "Solo funciona con imágenes",
-        "Distribuye almacenamiento y procesamiento, pero el análisis depende de las herramientas usadas",
-        "No puede trabajar con varios equipos"
-    ], "answer": 2, "explain": "Hadoop es infraestructura; las predicciones requieren desarrollar o integrar modelos y herramientas."},
-    {"q": "Una óptica quiere contar cuántos lentes de cada tipo vendió. ¿Qué enfoque encaja con MapReduce?", "options": [
-        "Map crea conteos parciales y Reduce los suma", "NameNode diseña lentes",
-        "YARN responde por los clientes", "HDFS calcula la predicción por sí solo"
-    ], "answer": 0, "explain": "Map puede generar pares tipo (producto, 1) y Reduce sumar por producto."},
-    {"q": "¿Cuál es una limitación del MapReduce tradicional?", "options": [
-        "No puede procesar datos", "Está orientado al procesamiento por lotes y puede ser poco adecuado para baja latencia",
-        "Solo funciona con una máquina", "No utiliza datos"
-    ], "answer": 1, "explain": "MapReduce tradicional está pensado principalmente para trabajos por lotes."},
-    {"q": "¿Qué herramienta se asocia con la administración de clústeres en Hortonworks HDP?", "options": [
-        "Apache Ambari", "Photoshop", "PowerPoint", "Notepad"
-    ], "answer": 0, "explain": "Apache Ambari ofrece herramientas de aprovisionamiento, administración y supervisión de clústeres."}
+    {
+        "q": "¿Cuál es la función principal de Apache Hadoop?",
+        "options": [
+            "Editar imágenes y documentos",
+            "Almacenar y procesar datos distribuidos en clústeres",
+            "Crear páginas web",
+            "Administrar únicamente bases de datos relacionales"
+        ],
+        "answer": 1,
+        "explain": "Hadoop es un marco de software para almacenar y procesar datos distribuidos en clústeres."
+    },
+    {
+        "q": "¿Por qué surge la necesidad de distribuir los datos entre varias máquinas?",
+        "options": [
+            "Para evitar utilizar almacenamiento",
+            "Porque una sola computadora puede convertirse en un límite de capacidad o rendimiento",
+            "Para eliminar todos los archivos duplicados",
+            "Porque las computadoras no pueden procesar datos individualmente"
+        ],
+        "answer": 1,
+        "explain": "La presentación explica que un solo equipo puede convertirse en un límite de capacidad o rendimiento."
+    },
+    {
+        "q": "¿Cuáles son los tres componentes principales de Hadoop que se presentan?",
+        "options": [
+            "HDFS, YARN y MapReduce",
+            "NameNode, Reduce y Hortonworks",
+            "HDFS, DataNode y Cloudera",
+            "Map, Shuffle y Sort"
+        ],
+        "answer": 0,
+        "explain": "HDFS se encarga del almacenamiento distribuido, YARN de la gestión de recursos y MapReduce del procesamiento."
+    },
+    {
+        "q": "¿Cuál es la función principal de HDFS?",
+        "options": [
+            "Administrar las aplicaciones del clúster",
+            "Almacenar archivos en bloques distribuidos entre diferentes nodos",
+            "Combinar los resultados de Reduce",
+            "Coordinar exclusivamente los recursos de memoria"
+        ],
+        "answer": 1,
+        "explain": "HDFS divide los archivos en bloques que se distribuyen entre los DataNodes."
+    },
+    {
+        "q": "¿Qué función tiene el NameNode en HDFS?",
+        "options": [
+            "Almacenar exclusivamente todos los bloques de datos",
+            "Administrar el espacio de nombres y los metadatos",
+            "Ejecutar la fase Reduce",
+            "Asignar recursos a todas las aplicaciones"
+        ],
+        "answer": 1,
+        "explain": "El NameNode administra el espacio de nombres y los metadatos de HDFS."
+    },
+    {
+        "q": "¿Qué función cumplen los DataNodes?",
+        "options": [
+            "Gestionar los metadatos del espacio de nombres",
+            "Almacenar los bloques de archivos distribuidos",
+            "Coordinar la fusión de empresas",
+            "Administrar exclusivamente las aplicaciones"
+        ],
+        "answer": 1,
+        "explain": "Los DataNodes almacenan los bloques de datos distribuidos en HDFS."
+    },
+    {
+        "q": "¿Para qué sirve la replicación de bloques en HDFS?",
+        "options": [
+            "Para convertir los archivos en pares clave-valor",
+            "Para ayudar a recuperarse ante fallos de nodos",
+            "Para sustituir al NameNode",
+            "Para ordenar los valores de MapReduce"
+        ],
+        "answer": 1,
+        "explain": "La presentación señala que la replicación ayuda a recuperarse ante fallos de nodos."
+    },
+    {
+        "q": "¿Qué ocurre cuando un cliente quiere leer un archivo almacenado en HDFS?",
+        "options": [
+            "El cliente consulta al NameNode para localizar los bloques y después los obtiene de los DataNodes",
+            "El cliente solicita todos los datos directamente a YARN",
+            "Reduce localiza los bloques y los almacena en el NameNode",
+            "Hortonworks convierte el archivo en una aplicación"
+        ],
+        "answer": 0,
+        "explain": "El cliente consulta al NameNode para localizar los bloques y obtiene los datos desde los DataNodes."
+    },
+    {
+        "q": "¿Cuál es la función de YARN?",
+        "options": [
+            "Almacenar archivos en bloques",
+            "Gestionar recursos y aplicaciones del clúster",
+            "Clasificar los bloques por nombre",
+            "Sustituir el almacenamiento distribuido"
+        ],
+        "answer": 1,
+        "explain": "YARN administra los recursos y las aplicaciones que se ejecutan en el clúster."
+    },
+    {
+        "q": "¿Qué componente de YARN arbitra los recursos del clúster?",
+        "options": [
+            "DataNode",
+            "ResourceManager",
+            "NameNode",
+            "Reducer"
+        ],
+        "answer": 1,
+        "explain": "El ResourceManager arbitra los recursos disponibles del clúster."
+    },
+    {
+        "q": "¿Qué función tiene el NodeManager según la presentación?",
+        "options": [
+            "Gestionar recursos y contenedores en su máquina",
+            "Administrar el espacio de nombres de HDFS",
+            "Agrupar todas las claves de Reduce",
+            "Almacenar las referencias históricas de Hortonworks"
+        ],
+        "answer": 0,
+        "explain": "Cada NodeManager gestiona recursos y contenedores en su máquina."
+    },
+    {
+        "q": "¿Qué función tiene el ApplicationMaster?",
+        "options": [
+            "Administrar los metadatos de todos los archivos",
+            "Coordinar la ejecución de cada aplicación",
+            "Almacenar las réplicas de HDFS",
+            "Combinar obligatoriamente todos los archivos del clúster"
+        ],
+        "answer": 1,
+        "explain": "El ApplicationMaster coordina la ejecución de cada aplicación."
+    },
+    {
+        "q": "¿Cuáles son las fases principales del procesamiento MapReduce que aparecen en la presentación?",
+        "options": [
+            "Read, Write y Delete",
+            "Map, Shuffle and Sort y Reduce",
+            "HDFS, YARN y DataNode",
+            "NameNode, ResourceManager y ApplicationMaster"
+        ],
+        "answer": 1,
+        "explain": "Map transforma registros, Shuffle and Sort agrupa valores por clave y Reduce combina los valores."
+    },
+    {
+        "q": "¿Qué produce la fase Map?",
+        "options": [
+            "Pares clave-valor intermedios",
+            "Únicamente archivos de configuración",
+            "Metadatos del NameNode",
+            "Una lista de recursos del clúster"
+        ],
+        "answer": 0,
+        "explain": "Map transforma los registros de entrada en pares clave-valor intermedios."
+    },
+    {
+        "q": "¿Qué sucede durante Shuffle and Sort?",
+        "options": [
+            "Se eliminan todos los valores repetidos",
+            "Se agrupan y ordenan los valores por clave",
+            "Se distribuyen los archivos únicamente entre los usuarios",
+            "Se detienen las aplicaciones del clúster"
+        ],
+        "answer": 1,
+        "explain": "Shuffle and Sort agrupa y organiza los valores intermedios de acuerdo con su clave."
+    },
+    {
+        "q": "¿Cuál es la función de Reduce?",
+        "options": [
+            "Localizar los bloques de HDFS",
+            "Administrar los recursos de cada máquina",
+            "Combinar los valores asociados a cada clave para producir resultados",
+            "Dividir los archivos originales en bloques"
+        ],
+        "answer": 2,
+        "explain": "Reduce combina los valores asociados a una misma clave para obtener los resultados."
+    },
+    {
+        "q": "En el ejemplo de conteo de palabras, ¿cuál sería el resultado para la entrada 'sol luna sol'?",
+        "options": [
+            "sol: 1, luna: 2",
+            "sol: 2, luna: 1",
+            "sol: 3, luna: 3",
+            "sol: 1, luna: 1"
+        ],
+        "answer": 1,
+        "explain": "La palabra sol aparece dos veces y luna aparece una vez."
+    },
+    {
+        "q": "En el ejemplo de las pizzas, ¿qué representa el par (Pepperoni, 1)?",
+        "options": [
+            "Un bloque almacenado en HDFS",
+            "Una aparición de la pizza Pepperoni en los datos de entrada",
+            "Un recurso asignado por YARN",
+            "El resultado final de todas las ventas"
+        ],
+        "answer": 1,
+        "explain": "Map emite un par por cada aparición de una pizza, utilizando su nombre como clave y 1 como valor."
+    },
+    {
+        "q": "¿Cuál de las siguientes opciones aparece como una aplicación de Hadoop en la presentación?",
+        "options": [
+            "Indexación web en motores de búsqueda",
+            "Diseño exclusivo de interfaces gráficas",
+            "Edición manual de fotografías",
+            "Creación de animaciones sin procesamiento de datos"
+        ],
+        "answer": 0,
+        "explain": "La presentación menciona la indexación web, el análisis de registros, las redes sociales y el comercio electrónico."
+    },
+    {
+        "q": "¿Qué significa la localidad de datos?",
+        "options": [
+            "Procesar los datos donde están almacenados para evitar tráfico pesado en la red",
+            "Guardar todos los datos en una sola computadora",
+            "Eliminar las aplicaciones que utilizan el clúster",
+            "Transferir obligatoriamente todos los datos a una máquina central"
+        ],
+        "answer": 0,
+        "explain": "La localidad de datos busca procesar la información donde está almacenada, reduciendo el tráfico de red."
+    },
+    {
+        "q": "¿Cuál de las siguientes opciones es una ventaja de Hadoop mencionada en la presentación?",
+        "options": [
+            "Respuestas instantáneas garantizadas para cualquier aplicación",
+            "Escalabilidad económica al añadir servidores estándar",
+            "Ausencia total de mantenimiento",
+            "Eliminación de todos los errores de entrada"
+        ],
+        "answer": 1,
+        "explain": "La presentación destaca que la capacidad puede crecer añadiendo servidores estándar."
+    },
+    {
+        "q": "¿Cuál es una limitación de MapReduce señalada en la presentación?",
+        "options": [
+            "No puede distribuir el trabajo",
+            "Es lento para aplicaciones que requieren respuestas en tiempo real",
+            "No puede generar resultados",
+            "Solo permite almacenar archivos de imágenes"
+        ],
+        "answer": 1,
+        "explain": "La presentación indica que MapReduce puede ser ineficiente cuando se necesitan respuestas inmediatas."
+    },
+    {
+        "q": "¿Qué problema puede generar el uso constante de disco durante el procesamiento?",
+        "options": [
+            "Cuellos de botella en el rendimiento",
+            "La eliminación automática de todos los DataNodes",
+            "La desaparición del NameNode",
+            "La conversión de YARN en una base de datos"
+        ],
+        "answer": 0,
+        "explain": "La lectura y escritura constante en HDFS puede generar cuellos de botella."
+    },
+    {
+        "q": "¿Qué fue Hortonworks?",
+        "options": [
+            "Una empresa centrada en tecnologías del ecosistema Hadoop",
+            "Una fase de MapReduce",
+            "Un componente encargado de almacenar bloques",
+            "Un tipo de archivo distribuido"
+        ],
+        "answer": 0,
+        "explain": "La presentación describe a Hortonworks como una empresa centrada en tecnologías del ecosistema Hadoop."
+    },
+    {
+        "q": "¿Qué era Hortonworks Data Platform (HDP)?",
+        "options": [
+            "Una distribución empresarial basada en Apache Hadoop",
+            "Un componente de hardware del NameNode",
+            "Una fase de procesamiento de MapReduce",
+            "Un lenguaje de programación para imágenes"
+        ],
+        "answer": 0,
+        "explain": "HDP integraba Hadoop y otros proyectos Apache como una distribución empresarial."
+    },
+    {
+        "q": "¿En qué año se fundó Hortonworks, según la línea de tiempo?",
+        "options": [
+            "2004",
+            "2011",
+            "2018",
+            "2021"
+        ],
+        "answer": 1,
+        "explain": "La presentación indica que Hortonworks se fundó en 2011."
+    },
+    {
+        "q": "¿En qué año se lanzó Hortonworks Data Platform (HDP)?",
+        "options": [
+            "2011",
+            "2012",
+            "2018",
+            "2019"
+        ],
+        "answer": 1,
+        "explain": "La línea de tiempo de la presentación indica que HDP se lanzó en 2012."
+    },
+    {
+        "q": "¿Cuándo anunciaron Hortonworks y Cloudera su fusión?",
+        "options": [
+            "3 de enero de 2019",
+            "8 de octubre de 2021",
+            "3 de octubre de 2018",
+            "Diciembre de 2021"
+        ],
+        "answer": 2,
+        "explain": "La presentación sitúa el anuncio de la fusión el 3 de octubre de 2018."
+    },
+    {
+        "q": "¿Cuándo se completó la fusión de Hortonworks y Cloudera?",
+        "options": [
+            "3 de enero de 2019",
+            "3 de octubre de 2018",
+            "En 2011",
+            "En diciembre de 2021"
+        ],
+        "answer": 0,
+        "explain": "Según la presentación, la fusión se completó el 3 de enero de 2019 bajo el nombre Cloudera."
+    },
+    {
+        "q": "¿Qué indica la presentación sobre el soporte ordinario de HDP 3.1?",
+        "options": [
+            "Terminó en diciembre de 2021",
+            "Terminó en octubre de 2018",
+            "Continúa indefinidamente sin cambios",
+            "Terminó cuando se fundó Hortonworks"
+        ],
+        "answer": 0,
+        "explain": "La diapositiva sobre productos históricos indica que el soporte ordinario de HDP 3.1 terminó en diciembre de 2021."
+    },
+    {
+        "q": "¿Qué criterio debe considerarse al elegir entre Hadoop y otros enfoques de procesamiento?",
+        "options": [
+            "Únicamente el nombre de la empresa",
+            "La latencia, el volumen de datos, la operación, los costes y los requisitos técnicos",
+            "Solamente el número de archivos",
+            "El diseño visual de la interfaz"
+        ],
+        "answer": 1,
+        "explain": "La presentación señala que la elección depende de la latencia, el volumen, la operación, los costes y los requisitos técnicos."
+    },
+    {
+        "q": "¿Qué función cumple HDFS en el caso ilustrativo de procesamiento por categorías?",
+        "options": [
+            "Almacena los registros distribuidos en bloques",
+            "Asigna los recursos a la aplicación",
+            "Combina por sí solo los resultados finales",
+            "Coordina la ejecución de cada aplicación"
+        ],
+        "answer": 0,
+        "explain": "En el ejemplo, HDFS almacena los registros distribuidos en bloques."
+    },
+    {
+        "q": "En el mismo caso ilustrativo, ¿qué función cumple YARN?",
+        "options": [
+            "Almacena los bloques de registros",
+            "Asigna recursos a la aplicación de procesamiento",
+            "Cuenta directamente todas las categorías",
+            "Replica exclusivamente los resultados finales"
+        ],
+        "answer": 1,
+        "explain": "La presentación indica que YARN asigna recursos a la aplicación de procesamiento."
+    },
+    {
+        "q": "¿Cuál de los siguientes retos de implementación de Hadoop se menciona en la presentación?",
+        "options": [
+            "La imposibilidad de distribuir el almacenamiento",
+            "La operación del clúster, la planificación de recursos, la seguridad y el mantenimiento",
+            "La ausencia de procesamiento paralelo",
+            "La imposibilidad de recuperar datos ante fallos"
+        ],
+        "answer": 1,
+        "explain": "La presentación identifica la operación del clúster, la planificación de recursos, la seguridad y el mantenimiento como retos."
+    },
+    {
+        "q": "¿Cuál es la idea principal que resume la relación entre HDFS, YARN y MapReduce?",
+        "options": [
+            "Los tres cumplen exactamente la misma función",
+            "HDFS almacena datos, YARN gestiona recursos y MapReduce procesa pares clave-valor",
+            "MapReduce almacena los archivos y HDFS coordina las aplicaciones",
+            "YARN sustituye por completo a HDFS y MapReduce"
+        ],
+        "answer": 1,
+        "explain": "La conclusión de la presentación distingue las funciones de almacenamiento, gestión de recursos y procesamiento."
+    }
 ]
 
 hosts = set()          # conexiones (sid) con permisos de anfitrión
