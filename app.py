@@ -475,7 +475,10 @@ state = {
     "rank_base": {},
     # El campeón es quien gana la batalla final (no el primero en puntos); el subcampeón, quien la pierde.
     "champion_id": None,
-    "runner_up": None
+    "runner_up": None,
+    # Las opciones de cada pregunta se mezclan: aquí queda dónde cayó la correcta y la rotación de posiciones.
+    "answer_index": -1,
+    "answer_bag": []
 }
 
 
@@ -672,6 +675,22 @@ def eligible_unanswered():
     return waiting
 
 
+def shuffled_options(q):
+    """Mezcla las opciones de una pregunta y devuelve (opciones, posición de la correcta).
+
+    La posición de la correcta rota por turnos (A, B, C y D, cada una una vez en orden aleatorio
+    antes de repetir), así no hay rachas ni una letra "favorita" que se pueda adivinar."""
+    options = list(q["options"])
+    n = len(options)
+    if not state["answer_bag"]:
+        state["answer_bag"] = random.sample(range(n), n)
+    target = state["answer_bag"].pop() % n
+    others = [o for i, o in enumerate(options) if i != q["answer"]]
+    random.shuffle(others)
+    others.insert(target, options[q["answer"]])
+    return others, target
+
+
 def begin_question():
     """Forma la siguiente ronda si hace falta y lanza una pregunta nueva con su plazo."""
     if state["winner"]:
@@ -690,7 +709,8 @@ def begin_question():
     state["question_index"] = idx
     state["round"] += 1
     q = QUESTIONS[idx]
-    state["question"] = {"q": q["q"], "options": q["options"], "number": state["round"]}
+    options, state["answer_index"] = shuffled_options(q)
+    state["question"] = {"q": q["q"], "options": options, "number": state["round"]}
     for p in state["players"].values():
         p.update({"answered": False, "correct": False})
     state["phase"] = "question"
@@ -711,7 +731,7 @@ def end_question():
     state["review_until"] = time.time() + REVIEW_SECONDS
     state["review"] = {
         "number": state["round"],
-        "correct": q["answer"],
+        "correct": state["answer_index"],
         "explain": q["explain"],
         "events": state["question_events"][:6],
         "round_over": bool(state["pairs"]) and all(pair.get("winner") for pair in state["pairs"]),
@@ -857,7 +877,8 @@ def start_game(*_):
         return
     state.update({
         "game_started": True, "winner": None, "tournament_round": 1, "round": 0,
-        "question_index": -1, "used_questions": [], "phase": "lobby", "review": None,
+        "question_index": -1, "used_questions": [], "answer_index": -1, "answer_bag": [],
+        "phase": "lobby", "review": None,
         "question_events": [], "rank_base": {}, "champion_id": None, "runner_up": None
     })
     for p in state["players"].values():
@@ -913,7 +934,7 @@ def submit_answer(data):
     except (TypeError, ValueError):
         return
     p["answered"] = True
-    p["correct"] = answer == QUESTIONS[state["question_index"]]["answer"]
+    p["correct"] = answer == state["answer_index"]
     # Mientras el combate no tiene ganador, el rival es el otro jugador de la pareja.
     rival_id = next(i for i in pair["players"] if i != pid)
     emit("answer_result", {
@@ -959,7 +980,7 @@ def reset_game(*_):
     token_to_pid.clear()
     sid_to_pid.clear()
     state.update({
-        "question_index": -1, "question": None, "round": 0,
+        "question_index": -1, "answer_index": -1, "answer_bag": [], "question": None, "round": 0,
         "game_started": False, "used_questions": [], "winner": None,
         "pairs": [], "tournament_round": 0, "phase": "lobby", "deadline": 0.0,
         "review_until": 0.0, "review": None, "question_events": [], "rank_base": {},

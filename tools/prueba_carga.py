@@ -37,7 +37,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from app import QUESTIONS  # noqa: E402  (solo para que los bots conozcan las respuestas)
 
-ANSWERS = {q["q"]: q["answer"] for q in QUESTIONS}
+# El servidor mezcla las opciones de cada pregunta, así que la correcta se busca por su texto.
+CORRECT_TEXT = {q["q"]: q["options"][q["answer"]] for q in QUESTIONS}
 
 
 class Bot:
@@ -56,12 +57,14 @@ class Bot:
         self.state_time = 0
         self.reloaded_at = None
         self.afk = False            # conectado pero sin responder nunca
+        self.correct_positions = [] # posición (0-3) de la respuesta correcta en cada pregunta cerrada
         self.max_points = {}
         self.rank_errors = []
         self.sio.on("joined", self._on_joined)
         self.sio.on("state_update", self._on_state)
         self.sio.on("game_over", self._on_game_over)
         self.sio.on("host_auth", self._on_host_auth)
+        self.sio.on("question_end", lambda review: self.correct_positions.append(review["correct"]))
 
     def _on_joined(self, data):
         self.pid = data["id"]
@@ -109,7 +112,7 @@ class Bot:
             threading.Timer(self.rng.uniform(0.03, 0.25), self._answer, args=(q,)).start()
 
     def _answer(self, q):
-        right = ANSWERS[q["q"]]
+        right = q["options"].index(CORRECT_TEXT[q["q"]])
         if self.rng.random() < self.accuracy:
             choice = right
         else:
@@ -259,6 +262,12 @@ def check_play(events, host, args, errors):
         errors.append("con jugadores inactivos ninguna pregunta llegó a cerrarse por tiempo")
     if host.rank_errors:
         errors.append("ranking incorrecto: " + "; ".join(sorted(set(host.rank_errors))[:4]))
+    # La posición de la correcta debe repartirse (rota por turnos): ninguna letra manda ni falta.
+    positions = host.correct_positions
+    if len(positions) >= 8:
+        counts = [positions.count(i) for i in range(4)]
+        if max(counts) - min(counts) > 2 or min(counts) == 0:
+            errors.append(f"la respuesta correcta no se reparte entre A, B, C y D: {counts}")
 
 
 def main():
